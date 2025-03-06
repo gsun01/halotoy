@@ -17,40 +17,36 @@ public:
     mfp = calc_mfp(z_s);
   };
 
-  ~Photon();
+  ~Photon() {};
 
-  // Simulate the reverse scattering event.
-  // distanceToSource: the known distance from the observer to the GRB.
-  // rng: a random number generator for sampling distributions.
-  void simulateScattering(double distanceToSource, std::mt19937 &rng);
-
-  // Get the computed post-scattering (final) direction toward the GRB.
-  auto getArrivalDirection() const;
-
-  // Get the computed time delay due to the extra path length (compared to a direct path).
-  double getTimeDelay() const;
-
-  // Get the scattering distance (drawn from an exponential distribution).
-  double getScatterDistance() const;
-
-  // Get the scattering angle (drawn from its distribution, may depend on energy).
-  double getScatterAngle() const;
-
-  // Get the photon energy.
-  double getEnergy() const;
-
-  // (Optional) Utility: Rotate a vector around an axis by a given angle (in radians).
-  // static auto rotateVector(const std::vector<double> &vec, const std::vector<double> &axis, double angle);
-
-private:
+  // comoving mean free path of photon before scattering
   double calc_mfp(double z) {
     return 0.0;
   }
 
-  // Sample a distance from an exponential distribution with the specified mean.
-  double sampleExponential(double mean, std::mt19937 &rng);
-  // Sample a scattering angle based on the photon energy (this function can be tuned as needed).
-  double sampleScatteringAngle(double energy, std::mt19937 &rng);
+  // draw from distribution the actual comoving distance traveled 
+  // by photon before scattering
+  double calc_d() {
+    std::random_device rd;
+    unsigned int seed = rd();
+    std::mt19937 rng(seed);
+    std::exponential_distribution<double> exp_dist(1.0/mfp);
+    d = exp_dist(rng);
+    return d;
+  }
+
+  // scattering angle
+  double calc_delta(double E) {
+    return 0.0;
+  }
+
+  double calc_theta() {
+    return 0.0;
+  }
+
+  bool is_observed() {
+    return false;
+  }
 
   double E, theta, phi; // energy of primary photon in TeV and the arrival direction at the observer (screen)
   double z; // redshift of GRB
