@@ -16,14 +16,22 @@ public:
     theta_p = th_p;
     z = z;
     z_s = calc_z(E, z, 0.8*z, 1.2*z);
-    mfp = calc_mfp(z_s);
+    calc_mfp();
+    calc_d();
+    calc_delta(E);
+    calc_theta();
+    calc_T();
   };
 
   ~Photon() {};
 
   // comoving mean free path of photon before scattering
-  double calc_mfp(double z) {
-    return 0.0;
+  double calc_mfp() {
+    auto f = [=](double z) {
+      return -1/(70*std::sqrt(0.3*(1+z)*(1+z)*(1+z)+0.7));
+    };
+    mfp = simpsonsRule(f, z, z_s, 1000);
+    return mfp;
   }
 
   // draw from distribution the actual comoving distance traveled 
@@ -49,11 +57,14 @@ public:
   }
 
   double calc_T() {
-    return 0.0;
+    T = (d+dE*std::sin(theta_p)/std::sin(M_PI-delta)-dE) / 3.0e5;
+    return T;
   }
 
   bool is_observed() {
-    return false;
+    return std::abs(
+      d * std::cos(theta) + dE * std::sin(theta_p) / std::sin(M_PI-delta) - d
+    ) < 1.0e-6;
   }
 
   double E, theta, phi; // energy of primary photon in TeV and the arrival direction at the observer (screen)
