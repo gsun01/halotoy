@@ -9,62 +9,74 @@
 
 class Photon {
 public:
-  Photon(double energy, double th_p, double phi_p, double z, double B) {
+  Photon(double energy, double th_p, double phi_p, double redshift, double B) {
     E = energy;
     B0 = B;
-    phi = phi_p;
-    theta_p = th_p;
-    z = z;
+    phi = phi_p;  // azimuthal angle in radians
+    theta_p = th_p; // polar angle in radians
+    z = redshift;
+    is_obs = false;
+
+    calc_dE();
     z_s = calc_z(E, z, 0.8*z, 1.2*z);
     calc_mfp();
     calc_d();
-    calc_delta(E);
+    calc_delta();
     calc_theta();
-    calc_T();
+
+    is_observed();
+    if (is_obs) {
+      calc_T();
+    }
   };
 
   ~Photon() {};
 
-  // comoving mean free path of photon before scattering
-  double calc_mfp() {
+  void calc_dE() {
     auto f = [=](double z) {
-      return -1/(70*std::sqrt(0.3*(1+z)*(1+z)*(1+z)+0.7));
+      return 3.0e5/(70*std::sqrt(0.3*(1+z)*(1+z)*(1+z)+0.7));
     };
-    mfp = simpsonsRule(f, z, z_s, 1000);
-    return mfp;
+    dE = adaptiveGaussQuadrature(f, 0, z);
+  }
+
+  // comoving mean free path of photon before scattering
+  void calc_mfp() {
+    auto f = [=](double z) {
+      return -3.0e5/(70*std::sqrt(0.3*(1+z)*(1+z)*(1+z)+0.7));
+    };
+    mfp = adaptiveGaussQuadrature(f, z, z_s);
   }
 
   // draw from distribution the actual comoving distance traveled 
   // by photon before scattering
-  double calc_d() {
+  void calc_d() {
     std::random_device rd;
     unsigned int seed = rd();
     std::mt19937 rng(seed);
     std::exponential_distribution<double> exp_dist(1.0/mfp);
     d = exp_dist(rng);
-    return d;
   }
 
   // scattering angle in radians
-  double calc_delta(double E) {
-    delta = 3.0e-6 * pow((1+z_s),-2) * (B0/1.0e-18) * pow((0.5*E/10),-2);
-    return delta;
+  void calc_delta() {
+    delta = 3.0e-6 /(1+z_s)/(1+z_s) * (B0/1.0e-18) /(0.5*E/10)/(0.5*E/10);
   }
 
-  double calc_theta() {
+  // polar angle on screen in radians
+  void calc_theta() {
     theta = delta - theta_p;
-    return theta;
   }
 
-  double calc_T() {
+  void is_observed() {
+    // if (delta < theta_p) {return;}
+    double x = d*std::sin(delta)/std::sin(theta);
+    if (std::abs(x-dE) < 1.0e-1) {
+      is_obs = true;
+    }
+  }
+
+  void calc_T() {
     T = (d+dE*std::sin(theta_p)/std::sin(M_PI-delta)-dE) / 3.0e5;
-    return T;
-  }
-
-  bool is_observed() {
-    return std::abs(
-      d * std::cos(theta) + dE * std::sin(theta_p) / std::sin(M_PI-delta) - d
-    ) < 1.0e-6;
   }
 
   double E, theta, phi; // energy of primary photon in TeV and the arrival direction at the observer (screen)
@@ -76,6 +88,7 @@ public:
   double delta; // scattering angle
   double dE; // comoving distance to GRB
   double T; // time delay due to scattering
+  bool is_obs; // is the photon observed?
 
   double B0; // strength of IGMF in G (free param)
 };
