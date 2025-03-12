@@ -5,7 +5,7 @@
 #include <iostream>
 #include <random>
 
-#include "solve_z.h"
+#include "helper.h"
 
 class Photon {
 public:
