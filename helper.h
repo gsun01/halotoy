@@ -50,3 +50,8 @@ double calc_z(double E, double z_E, double low, double high) {
     double z_s = bisection(F_func, low, high);
     return z_s;
 }
+
+// signum function
+template <typename T> int sgn(T val) {
+    return (T(0) < val) - (val < T(0));
+}
