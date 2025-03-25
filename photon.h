@@ -12,8 +12,8 @@ public:
   Photon(double energy, double th_emi, double phi_emi, double redshift, double B) {
     E = energy;
     B0 = B;
-    phi_obs = phi_emi;  // azimuthal angle in radians
-    theta_emi = th_emi; // polar angle in radians
+    phi_obs = sgn(th_emi)*phi_emi;  // azimuthal angle in radians
+    theta_emi = std::abs(th_emi); // polar angle in radians
     z = redshift;
     is_obs = false;
 
