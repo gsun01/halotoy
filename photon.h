@@ -9,11 +9,11 @@
 
 class Photon {
 public:
-  Photon(double energy, double th_p, double phi_p, double redshift, double B) {
+  Photon(double energy, double th_emi, double phi_emi, double redshift, double B) {
     E = energy;
     B0 = B;
-    phi = phi_p;  // azimuthal angle in radians
-    theta_p = th_p; // polar angle in radians
+    phi_obs = phi_emi;  // azimuthal angle in radians
+    theta_emi = th_emi; // polar angle in radians
     z = redshift;
     is_obs = false;
 
@@ -22,7 +22,7 @@ public:
     calc_mfp();
     calc_d();
     calc_delta();
-    calc_theta();
+    calc_theta_obs();
 
     is_observed();
     if (is_obs) {
@@ -36,7 +36,7 @@ public:
     auto f = [=](double z) {
       return 3.0e5/(70*std::sqrt(0.3*(1+z)*(1+z)*(1+z)+0.7));
     };
-    dE = adaptiveGaussQuadrature(f, 0, z);
+    d_E = adaptiveGaussQuadrature(f, 0, z);
   }
 
   // comoving mean free path of photon before scattering
@@ -54,7 +54,7 @@ public:
     unsigned int seed = rd();
     std::mt19937 rng(seed);
     std::exponential_distribution<double> exp_dist(1.0/mfp);
-    d = exp_dist(rng);
+    d_gamma = exp_dist(rng);
   }
 
   // scattering angle in radians
@@ -63,30 +63,31 @@ public:
   }
 
   // polar angle on screen in radians
-  void calc_theta() {
-    theta = delta - theta_p;
+  void calc_theta_obs() {
+    theta_obs = delta - theta_emi;
   }
 
   void is_observed() {
-    // if (delta < theta_p) {return;}
-    double x = d*std::sin(delta)/std::sin(theta);
-    if (std::abs(x-dE) < 1.0e-1) {
+    // if (delta < theta_emi) {return;}
+    double x = d_gamma*std::sin(delta)/std::sin(theta_obs);
+    if (std::abs(x-d_E) < 1.0e-1) {
       is_obs = true;
     }
   }
 
   void calc_T() {
-    T = (d+dE*std::sin(theta_p)/std::sin(M_PI-delta)-dE) / 3.0e5;
+    // convert from Mpc to km and divide by c
+    T = (d_gamma+d_E*std::sin(theta_emi)/std::sin(M_PI-delta)-d_E) * (3.086e19 / 3.0e5);
   }
 
-  double E, theta, phi; // energy of primary photon in TeV and the arrival direction at the observer (screen)
-  double theta_p;
+  double E, theta_obs, phi_obs; // energy of primary photon in TeV and the arrival direction at the observer (screen)
+  double theta_emi;
   double z; // redshift of GRB
   double z_s; // redshift of scattering event
   double mfp; // comoving mean free path of photon
-  double d; // comoving distance traveled by photon before scattering
+  double d_gamma; // comoving distance traveled by photon before scattering
   double delta; // scattering angle
-  double dE; // comoving distance to GRB
+  double d_E; // comoving distance to GRB
   double T; // time delay due to scattering
   bool is_obs; // is the photon observed?
 
