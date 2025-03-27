@@ -12,8 +12,12 @@ public:
   Photon(double energy, double th_emi, double phi_emi, double redshift, double B) {
     E = energy;
     B0 = B;
-    phi_obs = sgn(th_emi)*phi_emi;  // azimuthal angle in radians
     theta_emi = std::abs(th_emi); // polar angle in radians
+    phi_obs = phi_emi;
+    if (th_emi < 0) {
+      phi_obs = fmod(phi_obs+M_PI, 2*M_PI);
+    }
+
     z = redshift;
     is_obs = false;
 
@@ -68,9 +72,9 @@ public:
   }
 
   void is_observed() {
-    // if (delta < theta_emi) {return;}
+    if (delta < theta_emi) {return;}
     double x = d_gamma*std::sin(delta)/std::sin(theta_obs);
-    if (std::abs(x-d_E) < 1.0e-1) {
+    if (std::abs(x-d_E) < (1.0e-6*d_E+1.0e-3)) {
       is_obs = true;
     }
   }
