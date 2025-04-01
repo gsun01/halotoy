@@ -22,7 +22,7 @@ public:
     is_obs = false;
 
     calc_dE();
-    z_s = calc_z(E, z, 0.8*z, 1.2*z);
+    z_s = calc_z(E, z, 0.0, z);
     calc_mfp();
     calc_d();
     calc_delta();
