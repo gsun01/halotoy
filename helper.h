@@ -2,11 +2,6 @@
 #include <cmath>
 #include <functional>
 
-double f(double z) {
-    // integrand
-    return 3e5*(1+z) / (70*sqrt(0.3*(1+z)*(1+z)*(1+z)+0.7));
-}
-
 // implement adaptive Gaussian quadrature as in Mathematica
 double adaptiveGaussQuadrature(std::function<double(double)> func, double a, double b, double tol = 1e-6) {
     double x1 = (a + b) / 2.0;
@@ -19,12 +14,6 @@ double adaptiveGaussQuadrature(std::function<double(double)> func, double a, dou
     }
     double integral = x2 * sum;
     return integral;
-}
-
-// Define F(z_s) = integral from z_E to z_s of f(z') dz' - 1
-double F(double z_s, double z_E, double E, std::function<double(double)> func) {
-    double integral = adaptiveGaussQuadrature(func, z_E, z_s); // adjust subdivisions if needed
-    return 40/(E/20) + integral;
 }
 
 // Simple bisection method to find the root of F(z_s)=0 in [low, high]
@@ -43,10 +32,18 @@ double bisection(std::function<double(double)> F_func, double low, double high, 
     return mid; // return the best estimate if tolerance not met
 }
 
+// Define F(z_s) = integral from z_E to z_s of f(z') dz' - 1
+double F(double z_s, double z_E, double E) {
+    auto integrand = [=](double z) {
+        return (1+z)*(1+z)/40*(E/20) * (-3.0e5/(70*sqrt(0.3*(1+z)*(1+z)*(1+z)+0.7)*(1+z)));
+    };
+    double integral = adaptiveGaussQuadrature(integrand, z_E, z_s); // adjust subdivisions if needed
+    return integral-1.0;
+}
+
 double calc_z(double E, double z_E, double low, double high) {
     // Create a lambda for F(z_s) with fixed z_E and function f
-    auto F_func = [=](double z_s) { return F(z_s, z_E, E, f); };
-
+    auto F_func = [=](double z_s) { return F(z_s, z_E, E); };
     double z_s = bisection(F_func, low, high);
     return z_s;
 }
