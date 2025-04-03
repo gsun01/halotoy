@@ -33,7 +33,7 @@ int main() {
         std::uniform_real_distribution<double> phi_dist(0, 2.0*M_PI);
         
         #pragma omp for schedule(static)
-        for (int i = 0; i < 1000; ++i) {
+        for (int i = 0; i < 10000; ++i) {
             std::stringstream localBuffer; // thread-local buffer for photon data
             
             // if (i % 1000 == 0) {
@@ -43,7 +43,7 @@ int main() {
             
             double E = energy_dist(rng);
             
-            for (int j = 0; j < 1000000; ++j) {
+            for (int j = 0; j < 10000000; ++j) {
                 double theta_p = thetap_dist(rng);
                 double phi_p = phi_dist(rng);
                 Photon photon(E, theta_p, phi_p, z, B);
