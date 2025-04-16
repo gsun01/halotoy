@@ -1,5 +1,6 @@
 #include <iostream>
 #include <fstream>
+#include <filesystem>
 #include <cmath>
 #include <random>
 #include <sstream>
@@ -7,15 +8,31 @@
 
 #include "photon.h"
 
-int main() {
-    double z = 0.151;
-    double B = 1.0e-15;
+namespace fs = std::filesystem;
+
+int main(int argc, char* argv[]) {
+    if (argc != 5) {
+        std::cerr << "Usage: " << argv[0] << " z B theta_jet theta_view" << std::endl;
+        return 1;
+    }
+    // create run directory
+    std::string run_dir = "runs/z" + std::string(argv[1]) + "_B" + std::string(argv[2]) + "_j" + std::string(argv[3]) + "_v" + std::string(argv[4]) + "/";
+    std::cout << "Creating run directory: " << run_dir << std::endl;
+    if (fs::exists(run_dir)) {
+        std::cerr << "Run directory already exists. Please remove it or choose a different name." << std::endl;
+        return 1;
+    }
+    std::string command = "mkdir " + run_dir;
+    system(command.c_str());
+
+    double z = atof(argv[1]);
+    double B = pow(10, -atof(argv[2]));
+    double th_j = atof(argv[3])*M_PI/180.0; // convert to radians
+    double th_v = atof(argv[4])*M_PI/180.0; // convert to radians
     // jet and viewing angles of GRB221009A: https://arxiv.org/pdf/2301.01798
-    double th_j = 1.5 * M_PI/180.0;
-    double th_v = 2.0/3.0 * th_j;
     
-    std::ofstream file("data.csv");
-    file << "E,theta_obs,phi_obs,T\n";
+    std::ofstream file(run_dir+"data.csv");
+    file << "E,theta_obs,phi_obs,T,d_E,d_gamma,delta\n";
     
     #pragma omp parallel
     {
@@ -24,7 +41,7 @@ int main() {
         int thread_id = omp_get_thread_num();
         std::mt19937 rng(rd() + thread_id);
         std::uniform_real_distribution<double> energy_dist(2, 20);
-        std::uniform_real_distribution<double> theta_dist(-th_j, th_j);
+        std::uniform_real_distribution<double> theta_dist(0, th_j);
         std::uniform_real_distribution<double> phi_dist(0, 2.0*M_PI);
         
         #pragma omp for schedule(static)
@@ -55,7 +72,11 @@ int main() {
                         localBuffer << photon.E << ","
                                     << photon.th_obs << ","
                                     << photon.phi_obs << ","
-                                    << photon.T << "\n";
+                                    // << photon.T << "\n";
+                                    << photon.T << ","
+                                    << photon.d_E << ","
+                                    << photon.d_gamma << ","
+                                    << photon.delta << "\n";
                     }
                 }
             }
@@ -67,5 +88,6 @@ int main() {
     }
     
     file.close();
+    std::cout << "Data written to " << run_dir + "data.csv" << std::endl;
     return 0;
 }
