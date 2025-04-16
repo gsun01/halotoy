@@ -8,6 +8,8 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.colors import LogNorm
+import copy
 import os, sys
 import subprocess
 import imageio_ffmpeg as ffmpeg
@@ -23,8 +25,8 @@ def sort_data(path_to_data):
     phi = sorted_data[:,2]
     T = sorted_data[:,3]
 
-    x = np.abs(th)*np.cos(phi)
-    y = np.abs(th)*np.sin(phi)
+    x = th*np.cos(phi)
+    y = th*np.sin(phi)
 
     return E, th, phi, x, y, T
 
@@ -82,7 +84,36 @@ def plot_all_photons(E, x, y, run_dir):
     plt.savefig(os.path.join(run_dir,'halo.png'), dpi=300)
     plt.close()
 
-def make_movie(E, x, y, T, movie_img_dir, nbins=1000):
+def plot_density_map(E, B, x, y, run_dir):
+    # Create a 2D histogram
+    x_max = np.max(x)*1.1
+    # x_max = 1.5
+    hist, xedges, yedges = np.histogram2d(x, y, bins=100, range=[[-x_max, x_max], [-x_max, x_max]])
+
+    # mask 0 counts for log colorbar and set bad color to black
+    hist = np.ma.masked_where(hist == 0, hist)
+    hist = hist / np.sum(hist)
+    hist = hist / np.max(hist)
+    cmap = copy.copy(plt.cm.hot)
+    cmap.set_bad(color='black')
+
+    # Plot the histogram as an image
+    plt.figure(figsize=(6,6))
+    plt.imshow(hist.T, origin='lower', extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]], aspect='equal', cmap=cmap, norm=LogNorm())
+    cbar = plt.colorbar(label='Counts [arbitrary u]')
+    cbar.set_ticks([1e-4, 1e-3, 1e-2, 1e-1, 1])
+    plt.xlabel(r'$\theta \cos\phi$ [degrees]')
+    plt.ylabel(r'$\theta \sin\phi$ [degrees]')
+    plt.title(f'B = 1.0e-{B} G')
+    plt.savefig(os.path.join(run_dir,'halo_density_map.png'), dpi=300)
+    plt.close()
+
+def make_movie(E, x, y, T, run_dir, nbins=1000):
+    movie_img_dir = os.path.join(run_dir, 'halo_imgs')
+    if not os.path.exists(movie_img_dir):
+        os.makedirs(movie_img_dir)
+    
+
     num_bins = nbins
     x_max = np.max(x)*1.1
 
@@ -131,7 +162,7 @@ def make_movie(E, x, y, T, movie_img_dir, nbins=1000):
         '-i', os.path.join(movie_img_dir,'halo_*.png'),
         '-c:v', 'libx264',
         '-pix_fmt', 'yuv420p',
-        'halo.mp4'
+        os.path.join(os.path.join(run_dir,'halo.mp4'))
     ]
 
     # Run the command
@@ -147,7 +178,7 @@ def main():
         print("Usage: python plot-data.py z B th_j th_v")
         sys.exit(1)
     z = args[1]
-    B = args[2]
+    B = args[2] # B = 15 means the magnetic field strength is 1.0e-15
     th_j = args[3]
     th_v = args[4]
 
@@ -155,10 +186,7 @@ def main():
     if not os.path.exists(run_dir):
         print(f"Run directory {run_dir} does not exist.")
         sys.exit(1)
-    movie_img_dir = os.path.join(run_dir, 'halo_imgs')
     hist_dir = os.path.join(run_dir, 'histograms')
-    if not os.path.exists(movie_img_dir):
-        os.makedirs(movie_img_dir)
     if not os.path.exists(hist_dir):
         os.makedirs(hist_dir)
     
@@ -169,9 +197,10 @@ def main():
     
 
     E, th, phi, x, y, T = sort_data(path_to_data)
-    plot_histogram(E, th, phi, T, hist_dir)
-    plot_all_photons(E, x, y, run_dir)
-    # make_movie(E, x, y, T, movie_img_dir)
+    # plot_histogram(E, th, phi, T, hist_dir)
+    # plot_all_photons(E, x, y, run_dir)
+    plot_density_map(E, B, x, y, run_dir)
+    # make_movie(E, x, y, T, run_dir)
 
 if __name__ == '__main__':
     main()
