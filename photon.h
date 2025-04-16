@@ -10,7 +10,7 @@
 struct GRB_params {
   double z; // redshift of GRB
   double E; // energy of primary photon in TeV
-  double B0; // strength of IGMF in G (free param)
+  double B0; // strength of IGMF in Gauss
   double th_emj; // emission angle w.r.t. the jet axis in radians
   double phi_emj; // emission angle w.r.t. the line of sight in radians
   double th_jet; // half opening angle of jet in radians
@@ -21,15 +21,47 @@ struct GRB_params {
 
 class Photon {
 private:
-  void calc_emitting_angles() {
+  void calc_phi_emi() {
     // phi_emi
+    if (std::abs(phi_emj-M_PI/2.0) < 1.0e-6) {
+      phi_emi = M_PI/2.0;
+      return;
+    }
+    if (std::abs(phi_emj-1.5*M_PI) < 1.0e-6) {
+      if (std::abs(th_emj-th_view) < 1.0e-6) {
+        // photon comes from the jet axis
+        phi_emi = 0.0;
+        return;
+      }
+      else if (th_emj < th_view) {
+        phi_emi = M_PI/2.0;
+        return;
+      }
+      else {
+        phi_emi = M_PI*1.5;
+        return;
+      }
+    }
     double a = std::atan(std::tan(phi_emj) + th_view/th_emj/std::cos(phi_emj));
-    if (0 <= phi_emj < M_PI/2.0) { phi_emi = a;}
-    else if (M_PI/2.0 <= phi_emj < 1.5*M_PI) { phi_emi = M_PI + a;}
-    else if (1.5*M_PI <= phi_emj < 2.0*M_PI) { phi_emi = fmod(2.0*M_PI + a, 2.0*M_PI);}
+    if (0 <= phi_emj && phi_emj < M_PI/2.0) { phi_emi = a;}
+    else if (M_PI/2.0 < phi_emj && phi_emj < 1.5*M_PI) { phi_emi = M_PI+a;}
+    else if (1.5*M_PI < phi_emj && phi_emj < 2.0*M_PI) { phi_emi = fmod(2.0*M_PI + a, 2.0*M_PI);}
+    return;
+  }
 
+  void calc_th_emi() {
     // th_emi
-    th_emi = th_emj * std::cos(phi_emj) / std::cos(phi_emi);
+    if (th_emj < 1.0e-6) {
+      // photon comes from the jet axis
+      th_emi = th_view;
+      return;
+    }
+    th_emi = (th_emj * std::sin(phi_emj) + th_view) / std::sin(phi_emi);
+  }
+
+  void calc_emitting_angles() {
+    calc_phi_emi();
+    calc_th_emi();
   }
 
   void calc_distances() {
@@ -93,12 +125,6 @@ public:
 
   void propagate_photon() {    
     calc_emitting_angles();
-    // th_emi = std::abs(th_emi); // polar angle in radians
-    // phi_obs = phi_emi;
-    // if (th_emi < 0) {
-    //   phi_obs = fmod(phi_obs+M_PI, 2*M_PI);
-    // }
-
     calc_distances();
     calc_delta();
     calc_obs_angles();
@@ -108,16 +134,17 @@ public:
     }
   }
 
-  double th_emj, phi_emj; // emission angles w.r.t. the jet axis
-  double th_emi, phi_emi; // emission angles w.r.t. the line of sight
-  double th_jet, th_view; // half opening angle of jet and viewing angle
-  double E, th_obs, phi_obs; // energy of primary photon in TeV and the arrival direction at the observer (screen)
+  double th_emj, phi_emj; // emission angles w.r.t. the jet axis in radians
+  double th_emi, phi_emi; // emission angles w.r.t. the line of sight in radians
+  double th_jet, th_view; // half opening angle of jet and viewing angle in radians
+  double E, th_obs, phi_obs; // energy of primary photon in TeV and the arrival direction 
+                             // at the observer in radians (screen)
 
   double z; // redshift of GRB
   double z_s; // redshift of scattering event
   double mfp; // comoving mean free path of photon
   double d_gamma; // comoving distance traveled by photon before scattering
-  double delta; // scattering angle
+  double delta; // scattering angle in radians
   double d_E; // comoving distance to GRB
   double T; // time delay due to scattering
   bool is_obs; // is the photon observed?
