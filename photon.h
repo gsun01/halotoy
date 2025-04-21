@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iostream>
 #include <random>
+#include <limits>
 
 #include "helper.h"
 
@@ -56,7 +57,12 @@ private:
       th_emi = th_view;
       return;
     }
-    th_emi = (th_emj * std::sin(phi_emj) + th_view) / std::sin(phi_emi);
+    double sin_phi_emi = std::sin(phi_emi);
+    if (sin_phi_emi < 1.0e-6) {
+      th_emi = std::sqrt(th_emj*th_emj - th_view*th_view);
+      return;
+    }
+    th_emi = (th_emj * std::sin(phi_emj) + th_view) / sin_phi_emi;
   }
 
   void calc_emitting_angles() {
@@ -98,8 +104,14 @@ private:
 
   void is_observed() {
     if (delta < th_emi) {return;}
-    double x = d_gamma*std::sin(delta)/std::sin(th_obs);
-    if (std::abs(x-d_E) < (1.0e-6*d_E+1.0e-3)) {
+    // x: "correct" distance traveled by photon after scattering
+    double x = std::sqrt(d_E*d_E + d_gamma*d_gamma - 2*d_E*d_gamma*std::cos(th_emi));
+    // delta_hit: "correct" scattering angle for the photon to cross the Earth
+    double cos_delta_hit = (d_E*std::cos(th_emi) - d_gamma) / x;
+    double tol = 4.0e-16 / x;     // angular size of the Earth at scattering
+    // double tol = std::numeric_limits<double>::epsilon(); // machine precision (2 orders higher than the above)
+    if (std::abs(std::cos(delta)-cos_delta_hit) < tol) {
+      // photon crosses Earth
       is_obs = true;
     }
   }
