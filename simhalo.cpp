@@ -7,7 +7,6 @@
 #include <omp.h>
 
 #include "photon.h"
-#include "helper.h"
 
 namespace fs = std::filesystem;
 int NUM_E = 10000;
