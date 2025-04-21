@@ -9,6 +9,8 @@
 #include "photon.h"
 
 namespace fs = std::filesystem;
+int NUM_E = 10000;
+int NUM_SAMPLES_PER_E = 100000000;
 
 int main(int argc, char* argv[]) {
     if (argc != 5) {
@@ -24,6 +26,11 @@ int main(int argc, char* argv[]) {
     }
     std::string command = "mkdir " + run_dir;
     system(command.c_str());
+    // create tmp directory
+    std::string tmp_dir = run_dir + "tmp/";
+    std::cout << "Creating temporary directory: " << tmp_dir << std::endl;
+    command = "mkdir " + tmp_dir;
+    system(command.c_str());
 
     double z = atof(argv[1]);
     double B = pow(10, -atof(argv[2]));
@@ -31,63 +38,94 @@ int main(int argc, char* argv[]) {
     double th_v = atof(argv[4])*M_PI/180.0; // convert to radians
     // jet and viewing angles of GRB221009A: https://arxiv.org/pdf/2301.01798
     
-    std::ofstream file(run_dir+"data.csv");
-    file << "E,theta_obs,phi_obs,T,d_E,d_gamma,delta\n";
-    
+
+
+    // serial seeding before parallel region
+    std::random_device rd;
+    int max_threads = omp_get_max_threads();
+    std::cout << "Using " << max_threads << " threads." << std::endl;
+    std::cout << "Generating " << NUM_E << " energy samples and " << NUM_SAMPLES_PER_E << " samples per energy." << std::endl;
+    std::vector<uint32_t> thread_seeds(max_threads);
+    for (int t = 0; t < max_threads; ++t) {
+        thread_seeds[t] = rd();
+    }
+
+
+    std::uniform_real_distribution<double> energy_dist(2, 20);
+    std::uniform_real_distribution<double> theta_dist(0, th_j);
+    std::uniform_real_distribution<double> phi_dist(0, 2.0*M_PI);
+
+    // --------------------------------------------------------------------------------------
+    // Parallel region
+    // --------------------------------------------------------------------------------------
+    omp_set_num_threads(max_threads);
     #pragma omp parallel
     {
-        // thread-local random number generator.
-        std::random_device rd;
         int thread_id = omp_get_thread_num();
-        std::mt19937 rng(rd() + thread_id);
-        std::uniform_real_distribution<double> energy_dist(2, 20);
-        std::uniform_real_distribution<double> theta_dist(0, th_j);
-        std::uniform_real_distribution<double> phi_dist(0, 2.0*M_PI);
+        std::mt19937 rng(thread_seeds[thread_id]);
         
-        #pragma omp for schedule(static)
-        for (int i = 0; i < 10000; ++i) {
+        // thread-local output files
+        std::ofstream thread_file(tmp_dir + "data_thread_" + std::to_string(thread_id) + ".csv");
+        // write header once per file
+        thread_file << "E,theta_obs,phi_obs,T,th_emj,th_emi,delta" << std::endl;
+        #pragma omp for schedule(dynamic, 1)
+        for (int i = 0; i < NUM_E; ++i) {
             std::stringstream localBuffer; // thread-local buffer for photon data
 
             double E = energy_dist(rng);
             
-            for (int j = 0; j < 100000; ++j) {
+            for (int j = 0; j < NUM_SAMPLES_PER_E; ++j) {
                 double th_emj = theta_dist(rng);
-                for (int k = 0; k < 1000; ++k) {
-                    // Generate a random azimuthal angle
-                    double phi_emj = phi_dist(rng);
-                    // Create a Photon object and propagate it
-                    GRB_params params;
-                    params.z = z;
-                    params.E = E;
-                    params.B0 = B;
-                    params.th_emj = th_emj;
-                    params.phi_emj = phi_emj;
-                    params.th_jet = th_j;
-                    params.th_view = th_v;
-                    params.mfp_seed = rd() + thread_id;
-                    Photon photon(params);
-                    photon.propagate_photon();
-                    // Check if the photon is observed
-                    if (photon.is_obs) {
-                        localBuffer << photon.E << ","
-                                    << photon.th_obs << ","
-                                    << photon.phi_obs << ","
-                                    // << photon.T << "\n";
-                                    << photon.T << ","
-                                    << photon.d_E << ","
-                                    << photon.d_gamma << ","
-                                    << photon.delta << "\n";
-                    }
+                double phi_emj = phi_dist(rng);
+                GRB_params params {z, E, B, th_j, th_v, th_emj, phi_emj};
+
+                params.mfp_seed = rd() + thread_id;
+                Photon photon(params);
+                photon.propagate_photon();
+                // Check if the photon is observed
+                if (photon.is_obs) {
+                    localBuffer << photon.E << ","
+                                << photon.th_obs << ","
+                                << photon.phi_obs << ","
+                                // << photon.T << "\n";
+                                << photon.T << ","
+                                << photon.th_emj << ","
+                                << photon.th_emi << ","
+                                << photon.delta << "\n";
                 }
+            // end of th-phi loop
             }
-            #pragma omp critical
-            {
-                file << localBuffer.str();
-            }
+            // flush buffer to thread-local file once per E
+            thread_file << localBuffer.str();
+        // end of E loop
         }
+        thread_file.close();
+    // end of parallel region
+    }
+
+
+    // --------------------------------------------------------------------------------------
+    // Merge thread-local files into the main file
+    // --------------------------------------------------------------------------------------
+    std::string main_file_path = run_dir + "data.csv";
+    std::ofstream main_file(main_file_path);
+    main_file << "E,theta_obs,phi_obs,T,th_emj,th_emi,delta\n";
+    std::cout << "Merging thread-local files into main file: " << main_file_path << std::endl;
+
+    for (int t = 0; t < max_threads; ++t) {
+        std::ifstream thread_file(tmp_dir + "data_thread_" + std::to_string(t) + ".csv");
+        std::string line;
+        // skip header
+        std::getline(thread_file, line);
+        while (std::getline(thread_file, line)) {
+            main_file << line << "\n";
+        }
+        thread_file.close();
+        // remove thread-local file
+        fs::remove(tmp_dir + "data_thread_" + std::to_string(t) + ".csv");
     }
     
-    file.close();
-    std::cout << "Data written to " << run_dir + "data.csv" << std::endl;
+    main_file.close();
+    std::cout << "Data written to " << main_file_path << std::endl;
     return 0;
 }
