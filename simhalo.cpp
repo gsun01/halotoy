@@ -7,10 +7,40 @@
 #include <omp.h>
 
 #include "photon.h"
+#include "helper.h"
 
 namespace fs = std::filesystem;
 int NUM_E = 10000;
 int NUM_SAMPLES_PER_E = 100000000;
+
+std::vector<double> calc_per_E_params(double z, double E, double B0, int mfp_seed, std::mt19937 &rng) {
+    // d_E: comoving distance to GRB
+    auto f1 = [=](double zz) {
+      return 3.0e5/(70*std::sqrt(0.3*(1+zz)*(1+zz)*(1+zz)+0.7));
+    };
+    double d_E = adaptiveGaussQuadrature(f1, 0, z);
+
+    // z_s: redshift of scattering event
+    double z_s = calc_z(E, z, 0.0, z);
+
+    // mfp: comoving mean free path of photon before scattering
+    auto f2 = [=](double zz) {
+      return -3.0e5/(70*std::sqrt(0.3*(1+zz)*(1+zz)*(1+zz)+0.7));
+    };
+    double mfp = adaptiveGaussQuadrature(f2, z, z_s);
+
+    // d_gamma: comoving distance traveled by photon before scattering
+    std::exponential_distribution<double> exp_dist(1.0/mfp);
+    double d_gamma = exp_dist(rng);
+
+    // delta: scattering angle in radians
+    double delta = 3.0e-6 /(1+z_s)/(1+z_s) * (B0/1.0e-18) /(0.5*E/10)/(0.5*E/10);
+
+
+    std::vector<double> res = {d_E, d_gamma, delta};
+
+    return res;
+}
 
 int main(int argc, char* argv[]) {
     if (argc != 5) {
@@ -73,18 +103,21 @@ int main(int argc, char* argv[]) {
             std::stringstream localBuffer; // thread-local buffer for photon data
 
             double E = energy_dist(rng);
+            std::vector<double> per_E_params = calc_per_E_params(z, E, B, thread_id, rng);
+            double d_E = per_E_params[0];
+            double d_gamma = per_E_params[1];
+            double delta = per_E_params[2];
             
             for (int j = 0; j < NUM_SAMPLES_PER_E; ++j) {
                 double th_emj = theta_dist(rng);
                 double phi_emj = phi_dist(rng);
-                GRB_params params {z, E, B, th_j, th_v, th_emj, phi_emj};
+                GRB_params params {d_E, d_gamma, delta, th_emj, phi_emj, th_j, th_v};
 
-                params.mfp_seed = rd() + thread_id;
                 Photon photon(params);
                 photon.propagate_photon();
                 // Check if the photon is observed
                 if (photon.is_obs) {
-                    localBuffer << photon.E << ","
+                    localBuffer << E << ","
                                 << photon.th_obs << ","
                                 << photon.phi_obs << ","
                                 // << photon.T << "\n";
