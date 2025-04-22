@@ -10,13 +10,15 @@
 
 struct GRB_params {
   double d_E; // comoving distance to GRB in Mpc
-  double d_gamma; // comoving distance traveled by photon before scattering in Mpc
+  double mfp; // comoving mfp of photon before scattering in Mpc
   double delta; // scattering angle in radians
 
   double th_emj; // emission angle w.r.t. the jet axis in radians
   double phi_emj; // emission angle w.r.t. the line of sight in radians
   double th_jet; // half opening angle of jet in radians
   double th_view; // viewing angle in radians
+
+  std::mt19937& rng;
 };
 
 class Photon {
@@ -69,32 +71,25 @@ private:
     calc_th_emi();
   }
 
-  // void calc_distances() {
-  //   // d_E: comoving distance to GRB
-  //   auto f1 = [=](double z) {
-  //     return 3.0e5/(70*std::sqrt(0.3*(1+z)*(1+z)*(1+z)+0.7));
-  //   };
-  //   d_E = adaptiveGaussQuadrature(f1, 0, z);
+  void importance_sample_d_gamma() {
+    // d_gamma_hit: given E and th_emi there is a unique d_gamma_hit for the photon to cross the Earth
+    double d_gamma_hit = std::sin(delta-th_emi) * d_E / std::sin(delta);
 
-  //   // z_s: redshift of scattering event
-  //   z_s = calc_z(E, z, 0.0, z);
+    // narrow Gaussian centered on d_gamma_hit
+    double d_gamma_sigma = 1.0e-3*d_gamma_hit;
+    double min_sigma = std::numeric_limits<double>::epsilon() * std::abs(d_gamma_hit);
+    d_gamma_sigma = std::max(d_gamma_sigma, min_sigma);
+    std::normal_distribution<double> prop_dist(d_gamma_hit, d_gamma_sigma);
+    // sample from proposal distribution
+    double trial = prop_dist(rng);
+    d_gamma = (trial>0 ? trial : -trial);    // only accept positive d_gamma
 
-  //   // mfp: comoving mean free path of photon before scattering
-  //   auto f2 = [=](double z) {
-  //     return -3.0e5/(70*std::sqrt(0.3*(1+z)*(1+z)*(1+z)+0.7));
-  //   };
-  //   mfp = adaptiveGaussQuadrature(f2, z, z_s);
-
-  //   // d_gamma: comoving distance traveled by photon before scattering
-  //   std::mt19937 rng(mfp_seed);
-  //   std::exponential_distribution<double> exp_dist(1.0/mfp);
-  //   d_gamma = exp_dist(rng);
-  // }
-
-  // // scattering angle in radians
-  // void calc_delta() {
-  //   delta = 3.0e-6 /(1+z_s)/(1+z_s) * (B0/1.0e-18) /(0.5*E/10)/(0.5*E/10);
-  // }
+    // weight of the sample = P(d|E,th) / N(d_hit, sig_d)
+    double p_d = std::exp(-d_gamma/mfp) / mfp;    // true distribution: exponential
+    double D = (d_gamma-d_gamma_hit)/d_gamma_sigma;
+    double N_d = 1/(std::sqrt(2*M_PI)*d_gamma_sigma) * std::exp(-0.5*D*D);
+    w = p_d / N_d;
+  }
 
   void calc_obs_angles() {
     th_obs = delta - th_emi;
@@ -123,21 +118,23 @@ private:
 public:
   Photon(GRB_params &params)
     : d_E(params.d_E),
-      d_gamma(params.d_gamma),
+      mfp(params.mfp),
       delta(params.delta),
+      d_gamma(0.0),
 
       th_emj(params.th_emj),
       phi_emj(params.phi_emj),
       th_jet(params.th_jet),
       th_view(params.th_view),
-      is_obs(false) {};
+      is_obs(false),
+      
+      rng(params.rng) {};
 
   ~Photon() {};
 
   void propagate_photon() {    
     calc_emitting_angles();
-    // calc_distances();
-    // calc_delta();
+    importance_sample_d_gamma();
     calc_obs_angles();
     is_observed();
     if (is_obs) {
@@ -150,9 +147,14 @@ public:
   double th_jet, th_view; // half opening angle of jet and viewing angle in radians
   double th_obs, phi_obs; // the arrival direction at the observer in radians (screen)
 
+  double mfp; // comoving mfp of photon before scattering in Mpc
   double d_gamma; // comoving distance traveled by photon before scattering
   double delta; // scattering angle in radians
   double d_E; // comoving distance to GRB
   double T; // time delay due to scattering
   bool is_obs; // is the photon observed?
+
+  double w; // weight of the photon (importance sampling)
+
+  std::mt19937& rng; // random number generator
 };
