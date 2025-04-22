@@ -9,10 +9,10 @@
 #include "photon.h"
 
 namespace fs = std::filesystem;
-int NUM_E = 10000;
-int NUM_SAMPLES_PER_E = 100000000;
+constexpr int NUM_E = 10'000;
+constexpr int NUM_SAMPLES_PER_E = 100'000'000;
 
-std::vector<double> calc_per_E_params(double z, double E, double B0, int mfp_seed, std::mt19937 &rng) {
+std::vector<double> calc_per_E_params(double z, double E, double B0) {
     // d_E: comoving distance to GRB
     auto f1 = [=](double zz) {
       return 3.0e5/(70*std::sqrt(0.3*(1+zz)*(1+zz)*(1+zz)+0.7));
@@ -28,15 +28,10 @@ std::vector<double> calc_per_E_params(double z, double E, double B0, int mfp_see
     };
     double mfp = adaptiveGaussQuadrature(f2, z, z_s);
 
-    // d_gamma: comoving distance traveled by photon before scattering
-    std::exponential_distribution<double> exp_dist(1.0/mfp);
-    double d_gamma = exp_dist(rng);
-
     // delta: scattering angle in radians
     double delta = 3.0e-6 /(1+z_s)/(1+z_s) * (B0/1.0e-18) /(0.5*E/10)/(0.5*E/10);
 
-
-    std::vector<double> res = {d_E, d_gamma, delta};
+    std::vector<double> res = {d_E, mfp, delta};
 
     return res;
 }
@@ -53,13 +48,11 @@ int main(int argc, char* argv[]) {
         std::cerr << "Run directory already exists. Please remove it or choose a different name." << std::endl;
         return 1;
     }
-    std::string command = "mkdir " + run_dir;
-    system(command.c_str());
+    fs::create_directories(run_dir);
     // create tmp directory
     std::string tmp_dir = run_dir + "tmp/";
     std::cout << "Creating temporary directory: " << tmp_dir << std::endl;
-    command = "mkdir " + tmp_dir;
-    system(command.c_str());
+    fs::create_directories(tmp_dir);
 
     double z = atof(argv[1]);
     double B = pow(10, -atof(argv[2]));
@@ -91,26 +84,28 @@ int main(int argc, char* argv[]) {
     #pragma omp parallel
     {
         int thread_id = omp_get_thread_num();
-        std::mt19937 rng(thread_seeds[thread_id]);
+        uint32_t t_seed = thread_seeds[thread_id];
+        std::mt19937 rng(t_seed);
         
         // thread-local output files
         std::ofstream thread_file(tmp_dir + "data_thread_" + std::to_string(thread_id) + ".csv");
         // write header once per file
-        thread_file << "E,theta_obs,phi_obs,T,th_emj,th_emi,delta" << std::endl;
+        thread_file << "E,theta_obs,phi_obs,T,w,th_emj,th_emi,delta" << std::endl;
         #pragma omp for schedule(dynamic, 1)
         for (int i = 0; i < NUM_E; ++i) {
             std::stringstream localBuffer; // thread-local buffer for photon data
 
             double E = energy_dist(rng);
-            std::vector<double> per_E_params = calc_per_E_params(z, E, B, thread_id, rng);
+            std::vector<double> per_E_params = calc_per_E_params(z, E, B);
             double d_E = per_E_params[0];
-            double d_gamma = per_E_params[1];
+            double mfp = per_E_params[1];
             double delta = per_E_params[2];
             
             for (int j = 0; j < NUM_SAMPLES_PER_E; ++j) {
                 double th_emj = theta_dist(rng);
                 double phi_emj = phi_dist(rng);
-                GRB_params params {d_E, d_gamma, delta, th_emj, phi_emj, th_j, th_v};
+
+                GRB_params params {d_E, mfp, delta, th_emj, phi_emj, th_j, th_v, rng};
 
                 Photon photon(params);
                 photon.propagate_photon();
@@ -121,6 +116,7 @@ int main(int argc, char* argv[]) {
                                 << photon.phi_obs << ","
                                 // << photon.T << "\n";
                                 << photon.T << ","
+                                << photon.w << ","
                                 << photon.th_emj << ","
                                 << photon.th_emi << ","
                                 << photon.delta << "\n";
@@ -141,7 +137,7 @@ int main(int argc, char* argv[]) {
     // --------------------------------------------------------------------------------------
     std::string main_file_path = run_dir + "data.csv";
     std::ofstream main_file(main_file_path);
-    main_file << "E,theta_obs,phi_obs,T,th_emj,th_emi,delta\n";
+    main_file << "E,theta_obs,phi_obs,T,w,th_emj,th_emi,delta\n";
     std::cout << "Merging thread-local files into main file: " << main_file_path << std::endl;
 
     for (int t = 0; t < max_threads; ++t) {
@@ -158,6 +154,7 @@ int main(int argc, char* argv[]) {
     }
     
     main_file.close();
+    fs::remove(tmp_dir);
     std::cout << "Data written to " << main_file_path << std::endl;
     return 0;
 }
