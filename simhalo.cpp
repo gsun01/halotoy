@@ -10,7 +10,7 @@
 
 namespace fs = std::filesystem;
 constexpr int NUM_E = 10'000;
-constexpr int NUM_SAMPLES_PER_E = 100'000'000;
+constexpr int NUM_SAMPLES_PER_E = 100'000;
 
 std::vector<double> calc_per_E_params(double z, double E, double B0) {
     // d_E: comoving distance to GRB
