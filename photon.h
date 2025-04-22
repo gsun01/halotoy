@@ -107,8 +107,8 @@ private:
     double x = std::sqrt(d_E*d_E + d_gamma*d_gamma - 2*d_E*d_gamma*std::cos(th_emi));
     // delta_hit: "correct" scattering angle for the photon to cross the Earth
     double cos_delta_hit = (d_E*std::cos(th_emi) - d_gamma) / x;
-    double tol = 4.0e-16 / x;     // angular size of the Earth at scattering
-    // double tol = std::numeric_limits<double>::epsilon(); // machine precision (2 orders higher than the above)
+    double tol = 2.0e-16 / x;     // angle subtended by Earth at the scattering point
+    // double tol = 10*std::numeric_limits<double>::epsilon(); // 10*machine precision (3 orders higher than the above)
     if (std::abs(std::cos(delta)-cos_delta_hit) < tol) {
       // photon crosses Earth
       is_obs = true;
