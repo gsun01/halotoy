@@ -4,9 +4,6 @@
 #include <fstream>
 #include <iostream>
 #include <random>
-#include <limits>
-
-#include "helper.h"
 
 struct GRB_params {
   double d_E; // comoving distance to GRB in Mpc
@@ -21,54 +18,27 @@ struct GRB_params {
   std::mt19937& rng;
 };
 
+struct Vec3 { double x,y,z;
+  Vec3 operator+(Vec3 o) const {return {x+o.x,y+o.y,z+o.z};}
+  Vec3 operator-(Vec3 o) const {return {x-o.x,y-o.y,z-o.z};}
+  Vec3 operator*(double s) const {return {x*s,y*s,z*s};}
+};
+double dot(Vec3 a, Vec3 b){return a.x*b.x + a.y*b.y + a.z*b.z;}
+
 class Photon {
 private:
-  void calc_phi_emi() {
-    // phi_emi
-    if (std::abs(phi_emj-M_PI/2.0) < 1.0e-6) {
-      phi_emi = M_PI/2.0;
-      return;
-    }
-    if (std::abs(phi_emj-1.5*M_PI) < 1.0e-6) {
-      if (std::abs(th_emj-th_view) < 1.0e-6) {
-        // photon comes from the jet axis
-        phi_emi = 0.0;
-        return;
-      }
-      else if (th_emj < th_view) {
-        phi_emi = M_PI/2.0;
-        return;
-      }
-      else {
-        phi_emi = M_PI*1.5;
-        return;
-      }
-    }
-    double a = std::atan(std::tan(phi_emj) + th_view/th_emj/std::cos(phi_emj));
-    if (0 <= phi_emj && phi_emj < M_PI/2.0) { phi_emi = a;}
-    else if (M_PI/2.0 < phi_emj && phi_emj < 1.5*M_PI) { phi_emi = M_PI+a;}
-    else if (1.5*M_PI < phi_emj && phi_emj < 2.0*M_PI) { phi_emi = fmod(2.0*M_PI + a, 2.0*M_PI);}
-    return;
-  }
-
-  void calc_th_emi() {
-    // th_emi
-    if (th_emj < 1.0e-6) {
-      // photon comes from the jet axis
-      th_emi = th_view;
-      return;
-    }
-    double sin_phi_emi = std::sin(phi_emi);
-    if (sin_phi_emi < 1.0e-6) {
-      th_emi = std::sqrt(th_emj*th_emj - th_view*th_view);
-      return;
-    }
-    th_emi = (th_emj * std::sin(phi_emj) + th_view) / sin_phi_emi;
-  }
-
   void calc_emitting_angles() {
-    calc_phi_emi();
-    calc_th_emi();
+    double sin_th_view = std::sin(th_view);
+    double cos_th_view = std::cos(th_view);
+    double sin_th_emj = std::sin(th_emj);
+    double cos_th_emj = std::cos(th_emj);
+    double sin_phi_emj = std::sin(phi_emj);
+    double cos_phi_emj = std::cos(phi_emj);
+    th_emi = std::acos(-sin_th_view*sin_th_emj*cos_phi_emj + cos_th_view*cos_th_emj);
+    // (–π, +π]
+    phi_emi = std::atan2(sin_th_emj * sin_phi_emj, cos_th_view*sin_th_emj*cos_phi_emj-sin_th_view*cos_th_emj);
+    phi_emi -= M_PI/2.0; // [–π/2, +π/2]
+    if (phi_emi < 0) phi_emi += 2.0*M_PI; // [0, 2π)
   }
 
   void importance_sample_d_gamma() {
@@ -91,33 +61,46 @@ private:
     w = p_d / N_d;
   }
 
+  void flat_sample_d_gamma() {
+    std::exponential_distribution<double> exp_dist(1.0/mfp);
+    // sample from the exponential distribution
+    double trial = exp_dist(rng);
+    d_gamma = (trial>0 ? trial : -trial);    // only accept positive d_gamma
+    w = 1.0;
+  }
+
   void calc_obs_angles() {
-    th_obs = delta - th_emi;
+    th_obs = std::asin(d_gamma/d_E * std::sin(delta));
     phi_obs = phi_emi;
+  }
+
+  void calc_T(double x) {
+    // convert from Mpc to km and divide by c
+    T = (d_gamma + x - d_E) * (3.086e19 / 3.0e5);
   }
 
   void is_observed() {
     if (delta < th_emi) {return;}
+
     // x: "correct" distance traveled by photon after scattering
     double x = std::sqrt(d_E*d_E + d_gamma*d_gamma - 2*d_E*d_gamma*std::cos(th_emi));
     // delta_hit: "correct" scattering angle for the photon to cross the Earth
     double cos_delta_hit = (d_E*std::cos(th_emi) - d_gamma) / x;
-    double tol = 2.0e-16 / x;     // angle subtended by Earth at the scattering point
-    // double tol = 10*std::numeric_limits<double>::epsilon(); // 10*machine precision (3 orders higher than the above)
+
+    // double tol = std::cos(2.0e-16 / x);     // angle subtended by Earth at the scattering point
+    double tol = std::cos(2.4e-12 / x);     // angle subtended by 1 AU at the scattering point
+    // double tol = 1.0e-10;   // unrealistically large tolerance
+
     if (std::abs(std::cos(delta)-cos_delta_hit) < tol) {
       // photon crosses Earth
       is_obs = true;
+      calc_T(x);
     }
   }
 
-  void calc_T() {
-    // convert from Mpc to km and divide by c
-    T = (d_gamma+d_E*std::sin(th_emi)/std::sin(M_PI-delta)-d_E) * (3.086e19 / 3.0e5);
-  }
-
 public:
-  Photon(GRB_params &params)
-    : d_E(params.d_E),
+  Photon(GRB_params &params):
+      d_E(params.d_E),
       mfp(params.mfp),
       delta(params.delta),
       d_gamma(0.0),
@@ -134,12 +117,10 @@ public:
 
   void propagate_photon() {    
     calc_emitting_angles();
-    importance_sample_d_gamma();
+    // importance_sample_d_gamma();
+    flat_sample_d_gamma();
     calc_obs_angles();
     is_observed();
-    if (is_obs) {
-      calc_T();
-    }
   }
 
   double th_emj, phi_emj; // emission angles w.r.t. the jet axis in radians
