@@ -6,13 +6,18 @@
 #include <sstream>
 #include <omp.h>
 
+#include "helper.h"
 #include "photon.h"
 
 namespace fs = std::filesystem;
 constexpr int NUM_E = 10'000;
-constexpr int NUM_SAMPLES_PER_E = 100'000;
+constexpr int NUM_SAMPLES_PER_E = 1'000;
+constexpr double alpha = 2.5; // GRB intrinsic spectral index, i.e. dN/dE ~ E^-alpha exp(-E/Ec)
+constexpr double Ec = 20.0; // GRB intrinsic cutoff energy; TeV
+constexpr double E_trunc = 10.0; // lower bound on energy sampling; TeV
+std::string big_run_dir = "runs_VHE/";
 
-std::vector<double> calc_per_E_params(double z, double E, double B0) {
+std::vector<double> calc_per_E_params(double z, double E, double B0, std::mt19937& rng) {
     // d_E: comoving distance to GRB
     auto f1 = [=](double zz) {
       return 3.0e5/(70*std::sqrt(0.3*(1+zz)*(1+zz)*(1+zz)+0.7));
@@ -37,12 +42,14 @@ std::vector<double> calc_per_E_params(double z, double E, double B0) {
 }
 
 int main(int argc, char* argv[]) {
+
     if (argc != 5) {
         std::cerr << "Usage: " << argv[0] << " z B theta_jet theta_view" << std::endl;
         return 1;
     }
+
     // create run directory
-    std::string run_dir = "runs/z" + std::string(argv[1]) + "_B" + std::string(argv[2]) + "_j" + std::string(argv[3]) + "_v" + std::string(argv[4]) + "/";
+    std::string run_dir = big_run_dir + "z" + std::string(argv[1]) + "_B" + std::string(argv[2]) + "_j" + std::string(argv[3]) + "_v" + std::string(argv[4]) + "/";
     std::cout << "Creating run directory: " << run_dir << std::endl;
     if (fs::exists(run_dir)) {
         std::cerr << "Run directory already exists. Please remove it or choose a different name." << std::endl;
@@ -59,7 +66,6 @@ int main(int argc, char* argv[]) {
     double th_j = atof(argv[3])*M_PI/180.0; // convert to radians
     double th_v = atof(argv[4])*M_PI/180.0; // convert to radians
     // jet and viewing angles of GRB221009A: https://arxiv.org/pdf/2301.01798
-    
 
 
     // serial seeding before parallel region
@@ -72,8 +78,15 @@ int main(int argc, char* argv[]) {
         thread_seeds[t] = rd();
     }
 
+    // f(E) := dN/dE ~ E^-alpha * exp(-E/Ec)
+    // envelope function for rejection sampling: g(E) = Ec^{-1} * exp(-E/Ec)
+    // ratio M := max[f(E)/g(E)] = max[Ec * E^-alpha] = Ec * E_trunc^{-alpha}, s.t. f(E) <= M*g(E) for all E >= E_trunc
+    // acceptance probability: p_accept(E) = f(E)/[M*g(E)] = (E/E_trunc)^(-alpha)
+    std::exponential_distribution<double> envelop_dist(1.0/Ec);
+    std::uniform_real_distribution<double> uni(0.0, 1.0);
 
     std::uniform_real_distribution<double> energy_dist(2, 20);
+
     std::uniform_real_distribution<double> theta_dist(0, th_j);
     std::uniform_real_distribution<double> phi_dist(0, 2.0*M_PI);
 
@@ -90,13 +103,23 @@ int main(int argc, char* argv[]) {
         // thread-local output files
         std::ofstream thread_file(tmp_dir + "data_thread_" + std::to_string(thread_id) + ".csv");
         // write header once per file
-        thread_file << "E,theta_obs,phi_obs,T,w,th_emj,th_emi,delta" << std::endl;
+        thread_file << "E,theta_obs,phi_obs,T,w" << std::endl;
         #pragma omp for schedule(dynamic, 1)
         for (int i = 0; i < NUM_E; ++i) {
             std::stringstream localBuffer; // thread-local buffer for photon data
 
-            double E = energy_dist(rng);
-            std::vector<double> per_E_params = calc_per_E_params(z, E, B);
+            double E;
+            while (true) {
+                E = envelop_dist(rng);
+                // sample from the envelope function
+                if (E < E_trunc) { continue;}
+                double accept_prob = std::pow(E/E_trunc, -alpha);
+                if (uni(rng) < accept_prob) {
+                    break;
+                }
+            }
+
+            std::vector<double> per_E_params = calc_per_E_params(z, E, B, rng);
             double d_E = per_E_params[0];
             double mfp = per_E_params[1];
             double delta = per_E_params[2];
@@ -114,12 +137,8 @@ int main(int argc, char* argv[]) {
                     localBuffer << E << ","
                                 << photon.th_obs << ","
                                 << photon.phi_obs << ","
-                                // << photon.T << "\n";
                                 << photon.T << ","
-                                << photon.w << ","
-                                << photon.th_emj << ","
-                                << photon.th_emi << ","
-                                << photon.delta << "\n";
+                                << photon.w << "\n";
                 }
             // end of th-phi loop
             }
@@ -137,7 +156,7 @@ int main(int argc, char* argv[]) {
     // --------------------------------------------------------------------------------------
     std::string main_file_path = run_dir + "data.csv";
     std::ofstream main_file(main_file_path);
-    main_file << "E,theta_obs,phi_obs,T,w,th_emj,th_emi,delta\n";
+    main_file << "E,theta_obs,phi_obs,T,w\n";
     std::cout << "Merging thread-local files into main file: " << main_file_path << std::endl;
 
     for (int t = 0; t < max_threads; ++t) {
