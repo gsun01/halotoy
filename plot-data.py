@@ -10,12 +10,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 import copy
-import os, sys
+import os
 import subprocess
 import imageio_ffmpeg as ffmpeg
+from scipy.signal import savgol_filter
 
 def sort_data(path_to_data):
-    data = np.abs(np.loadtxt(path_to_data, skiprows=1, delimiter=','))
+    # data header is:
+    # E,theta_obs,phi_obs,T,w,th_emj,th_emi,delta
+    data = np.loadtxt(path_to_data, skiprows=1, delimiter=',')
     sorted_indices = np.argsort(data[:,3])
     sorted_data = data[sorted_indices]
 
@@ -24,24 +27,52 @@ def sort_data(path_to_data):
     th = sorted_data[:,1]*180/np.pi
     phi = sorted_data[:,2]
     T = sorted_data[:,3]
+    w = sorted_data[:,4]
 
     x = th*np.cos(phi)
     y = th*np.sin(phi)
 
-    return E, th, phi, x, y, T
+    # mask out NaN values
+    mask = np.isfinite(x) & np.isfinite(y) & np.isfinite(w)
+    x = x[mask]
+    y = y[mask]
+    w = w[mask]
+    E = E[mask]
+    th = th[mask]
+    phi = phi[mask]
+    T = T[mask]
 
-def plot_histogram(E, th, phi, T, hist_dir):
-    # plot histogram of E
+    return E, th, phi, x, y, T, w
+
+def plot_E2dNdE(E, w, inj_centers, inj_hist, hist_dir, nbins=100):
     plt.figure(figsize=(6,6))
-    plt.hist(E, bins=100, color='black', alpha=0.7)
-    plt.xlabel('E')
-    plt.ylabel('Counts')
-    plt.savefig(os.path.join(hist_dir,'E-hist.png'), dpi=300)
+    # observed spectrum
+    E_obs = 0.32*(E/20)**2  # observed photon energy in TeV
+    hist, edges = np.histogram(E_obs, bins=nbins, weights=w, density=False)
+    centers = 0.5*(edges[1:]+edges[:-1])
+    widths = edges[1:] - edges[:-1]
+    dNdE = hist / widths
+    E2dNdE = dNdE * centers**2
+    hist_sg = savgol_filter(E2dNdE, window_length=11, polyorder=3)
+
+    # plt.step(centers, hist, where='mid', alpha=0.6)
+    plt.plot(centers, hist_sg, lw=2, color='orange', label='observed spectrum')
+    plt.plot(inj_centers, inj_hist, lw=2, color='blue', label='injection spectrum')
+    plt.xscale('log')
+    plt.yscale('log')
+    plt.xlabel('E [TeV]')
+    plt.ylabel(r'$E^2dN/dE$ [arb. u]')
+    plt.legend()
+    plt.savefig(os.path.join(hist_dir,'E2dNdE.png'), dpi=300)
     plt.close()
 
+def plot_inj_spectrum(E, w, inj_centers, inj_hist, run_dir, nbins=100):
+    return
+
+def plot_histogram(th, phi, T, w, hist_dir, nbins=100):
     # plot histogram of th_obs
     plt.figure(figsize=(6,6))
-    plt.hist(th, bins=100, color='black', alpha=0.7)
+    plt.hist(th, bins=nbins, color='black', alpha=0.7, weights=w)
     plt.xlabel('theta_obs')
     plt.ylabel('Counts')
     plt.savefig(os.path.join(hist_dir,'th-hist.png'), dpi=300)
@@ -49,7 +80,7 @@ def plot_histogram(E, th, phi, T, hist_dir):
 
     # plot histogram of phi_obs
     plt.figure(figsize=(6,6))
-    plt.hist(phi, bins=100, color='black', alpha=0.7)
+    plt.hist(phi, bins=nbins, color='black', alpha=0.7, weights=w)
     plt.xlabel('phi_obs')
     plt.ylabel('Counts')
     plt.savefig(os.path.join(hist_dir,'phi-hist.png'), dpi=300)
@@ -57,38 +88,18 @@ def plot_histogram(E, th, phi, T, hist_dir):
 
     # plot histogram of T
     plt.figure(figsize=(6,6))
-    plt.hist(T, bins=100, color='black', alpha=0.7)
+    plt.hist(T, bins=nbins, color='black', alpha=0.7, weights=w)
     plt.xlabel('T')
-    # plt.xscale('log')
+    plt.xscale('log')
     plt.ylabel('Counts')
     plt.savefig(os.path.join(hist_dir,'T-hist.png'), dpi=300)
     plt.close()
 
-def plot_all_photons(E, x, y, run_dir):
+def plot_density_map(E, B, x, y, w, run_dir, nbins=100):
     x_max = np.max(x)*1.1
-
-    plt.figure(figsize=(6,6))
-    # if 5 < E < 7, color = 'red'
-    plt.scatter(x[(E>5) & (E<7)], y[(E>5) & (E<7)], s=5.0, color='red', label='5 TeV < E < 7 TeV')
-    # if 7 < E < 10, color = 'green'
-    plt.scatter(x[(E>7) & (E<10)], y[(E>7) & (E<10)], s=5.0, color='green', label='7 TeV < E < 10 TeV')
-    # if 10 < E < 20, color = 'blue'
-    plt.scatter(x[(E>10) & (E<20)], y[(E>10) & (E<20)], s=5.0, color='blue', label='10 TeV < E < 20 TeV')
-    # show labels
-    plt.xlabel('degrees')
-    plt.ylabel('degrees')
-    plt.xlim(-x_max, x_max)
-    plt.ylim(-x_max, x_max)
-    plt.legend()
-    plt.grid()
-    plt.savefig(os.path.join(run_dir,'halo.png'), dpi=300)
-    plt.close()
-
-def plot_density_map(E, B, x, y, run_dir):
-    # Create a 2D histogram
-    x_max = np.max(x)*1.1
-    # x_max = 1.5
-    hist, xedges, yedges = np.histogram2d(x, y, bins=100, range=[[-x_max, x_max], [-x_max, x_max]])
+    y_max = np.max(y)*1.1
+    xy_max = np.max([x_max, y_max])
+    hist, xedges, yedges = np.histogram2d(x, y, bins=nbins, range=[[-xy_max, xy_max], [-xy_max, xy_max]], weights=w)
 
     # mask 0 counts for log colorbar and set bad color to black
     hist = np.ma.masked_where(hist == 0, hist)
@@ -101,62 +112,90 @@ def plot_density_map(E, B, x, y, run_dir):
     plt.figure(figsize=(6,6))
     plt.imshow(hist.T, origin='lower', extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]], aspect='equal', cmap=cmap, norm=LogNorm())
     cbar = plt.colorbar(label='Counts [arbitrary u]')
-    cbar.set_ticks([1e-4, 1e-3, 1e-2, 1e-1, 1])
+    # cbar.set_ticks([1e-4, 1e-3, 1e-2, 1e-1, 1])
     plt.xlabel(r'$\theta \cos\phi$ [degrees]')
     plt.ylabel(r'$\theta \sin\phi$ [degrees]')
     plt.title(f'B = 1.0e-{B} G')
     plt.savefig(os.path.join(run_dir,'halo_density_map.png'), dpi=300)
     plt.close()
 
-def make_movie(E, x, y, T, run_dir, nbins=1000):
+def make_movie(B, x, y, T, w, run_dir, tbins=100, nbins=100):
     movie_img_dir = os.path.join(run_dir, 'halo_imgs')
     if not os.path.exists(movie_img_dir):
         os.makedirs(movie_img_dir)
     
-
-    num_bins = nbins
     x_max = np.max(x)*1.1
+    y_max = np.max(y)*1.1
+    xy_max = np.max([x_max, y_max])
 
-    # linear bins in T because we want to make a movie where linear time makes sense
     T_min, T_max = np.min(T), np.max(T)
-    bins = np.linspace(T_min, T_max, num_bins)
+    # linear bins in T because we want to make a movie where linear time makes sense
+    Tbins = np.linspace(T_min, T_max, tbins)
+    # actually let's use log bins
+    # Tbins = np.logspace(np.log10(T_min), np.log10(T_max), tbins)
     # define bin edges and bin data by T_delay
-    bin_assignment = np.digitize(T, bins)
-    unique_bins = np.unique(bin_assignment)
+    bin_assignment = np.digitize(T, Tbins)
+    unique_Tbins = np.unique(bin_assignment)
 
-    for bin in unique_bins:
-        E_in_bin = E[bin_assignment == bin]
+    # global min max for color normalization
+    global_min = np.inf
+    global_max = 0.0
+
+    for b in unique_Tbins:
+        mask = bin_assignment == b
+        if not np.any(mask):
+            continue
+
+        # raw 2D histogram with weights
+        hist, xedges, yedges = np.histogram2d(
+            x[mask], y[mask],
+            bins=nbins,
+            range=[[-xy_max, xy_max], [-xy_max, xy_max]],
+            weights=w[mask]
+        )
+        hist = hist / np.sum(hist)
+
+        pos = hist[hist > 0]
+        if pos.size:
+            global_min = min(global_min, pos.min())
+            global_max = max(global_max, pos.max())
+
+    norm = LogNorm(vmin=global_min, vmax=global_max)
+
+    bin_num = 0
+    for bin in unique_Tbins:
         T_in_bin = T[bin_assignment == bin]
         x_in_bin = x[bin_assignment == bin]
         y_in_bin = y[bin_assignment == bin]
-        # plot halo
+        w_in_bin = w[bin_assignment == bin]
+        
+        hist, xedges, yedges = np.histogram2d(x_in_bin, y_in_bin, bins=nbins, range=[[-xy_max, xy_max], [-xy_max, xy_max]], weights=w_in_bin)
+
+        # mask 0 counts for log colorbar and set bad color to black
+        hist = np.ma.masked_where(hist == 0, hist)
+        hist = hist / np.sum(hist)
+        hist = hist / np.max(hist)
+        cmap = copy.copy(plt.cm.hot)
+        cmap.set_bad(color='black')
+
+        # Plot the histogram as an image
         plt.figure(figsize=(6,6))
-        # if 5 < E < 7, color = 'red'
-        plt.scatter(x_in_bin[(E_in_bin>5) & (E_in_bin<7)], y_in_bin[(E_in_bin>5) & (E_in_bin<7)], s=5.0, color='red', label='5 TeV < E < 7 TeV')
-        # if 7 < E < 10, color = 'green'
-        plt.scatter(x_in_bin[(E_in_bin>7) & (E_in_bin<10)], y_in_bin[(E_in_bin>7) & (E_in_bin<10)], s=5.0, color='green', label='7 TeV < E < 10 TeV')
-        # if 10 < E < 20, color = 'blue'
-        plt.scatter(x_in_bin[(E_in_bin>10) & (E_in_bin<20)], y_in_bin[(E_in_bin>10) & (E_in_bin<20)], s=5.0, color='blue', label='10 TeV < E < 20 TeV')
-        # show labels
-        plt.xlabel('degrees')
-        plt.ylabel('degrees')
-        plt.xlim(-x_max, x_max)
-        plt.ylim(-x_max, x_max)
-        # scientific notation for T_delay
-        plt.title(f'T_delay = {T_in_bin[0]:.2e} s')
-        plt.legend()
-        plt.grid()
-        # make bin number 4 digits
-        bin_str = str(bin).zfill(4)
-        plt.savefig(os.path.join(movie_img_dir, f'halo_{bin_str}.png'), dpi=300)
+        plt.imshow(hist.T, origin='lower', extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]], aspect='equal', cmap=cmap, norm=norm)
+        cbar = plt.colorbar(label='Counts [arbitrary u]')
+        # cbar.set_ticks([1e-4, 1e-3, 1e-2, 1e-1, 1])
+        plt.xlabel(r'$\theta \cos\phi$ [degrees]')
+        plt.ylabel(r'$\theta \sin\phi$ [degrees]')
+        plt.title(f'T0 = {T_min:.2e} s, T - T0 = {T_in_bin[0]-T_min:.2e} s, B = 1.0e-{B} G')
+        plt.savefig(os.path.join(movie_img_dir, f'halo_{str(bin_num).zfill(4)}.png'), dpi=300)
         plt.close()
+        bin_num += 1
 
     # make a movie from halo/
     ffmpeg_exe = ffmpeg.get_ffmpeg_exe()
-    framerate = str(int(num_bins/10))
+    framerate = str(int(tbins/10))
     # framerate = '24'
     command = [
-        ffmpeg_exe,
+        ffmpeg_exe, '-y',   # overwrite output file
         '-framerate', framerate,
         '-pattern_type', 'glob',
         '-i', os.path.join(movie_img_dir,'halo_*.png'),
@@ -173,34 +212,35 @@ def make_movie(E, x, y, T, run_dir, nbins=1000):
         print("An error occurred while creating the movie:", e)
 
 def main():
-    args = sys.argv
-    if len(args) != 5:
-        print("Usage: python plot-data.py z B th_j th_v")
-        sys.exit(1)
-    z = args[1]
-    B = args[2] # B = 15 means the magnetic field strength is 1.0e-15
-    th_j = args[3]
-    th_v = args[4]
+    nbins = 100
+    # injection spectrum
+    E_inj = np.loadtxt('injection_energy_samples.csv')
+    hist, edges = np.histogram(E_inj, bins=nbins, density=False)
+    inj_centers = 0.5*(edges[1:]+edges[:-1])
+    widths = edges[1:] - edges[:-1]
+    dNdE = hist / widths
+    E2dNdE = dNdE * inj_centers**2
+    inj_hist_sg = savgol_filter(E2dNdE, window_length=11, polyorder=3)
 
-    run_dir = os.path.join('runs', f'z{z}_B{B}_j{th_j}_v{th_v}')
-    if not os.path.exists(run_dir):
-        print(f"Run directory {run_dir} does not exist.")
-        sys.exit(1)
-    hist_dir = os.path.join(run_dir, 'histograms')
-    if not os.path.exists(hist_dir):
-        os.makedirs(hist_dir)
-    
-    path_to_data = os.path.join(run_dir, 'data.csv')
-    if not os.path.exists(path_to_data):
-        print(f"Data file {path_to_data} does not exist.")
-        sys.exit(1)
-    
+    big_run_dir = 'runs_VHE'
+    for dir in os.listdir(big_run_dir):
+        run_dir = os.path.join(big_run_dir, dir)
+        if not os.path.isdir(run_dir):
+            print(f"{run_dir} is not a directory, skipping.")
+            continue
+        hist_dir = os.path.join(run_dir, 'histograms')
+        if not os.path.exists(hist_dir):
+            os.makedirs(hist_dir)
 
-    E, th, phi, x, y, T = sort_data(path_to_data)
-    # plot_histogram(E, th, phi, T, hist_dir)
-    # plot_all_photons(E, x, y, run_dir)
-    plot_density_map(E, B, x, y, run_dir)
-    # make_movie(E, x, y, T, run_dir)
+
+        B = dir.split('_')[1][1:]
+        E, th, phi, x, y, T, w = sort_data(os.path.join(run_dir, 'data.csv'))
+        plot_histogram(th, phi, T, w, run_dir, nbins=nbins)
+        plot_density_map(E, B, x, y, w, run_dir, nbins=nbins)
+        plot_E2dNdE(E, w, inj_centers, inj_hist_sg, run_dir, nbins=nbins)
+        make_movie(B, x, y, T, w, run_dir, nbins=nbins)
+        print(f"Plotting {run_dir} done.")
+    print("All plots done.")
 
 if __name__ == '__main__':
     main()
