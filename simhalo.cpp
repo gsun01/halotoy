@@ -1,9 +1,11 @@
 #include <iostream>
 #include <fstream>
-#include <filesystem>
-#include <cmath>
-#include <random>
 #include <sstream>
+#include <filesystem>
+
+#include <cmath>
+#include <vector>
+#include <random>
 #include <omp.h>
 
 #include "helper.h"
@@ -15,7 +17,7 @@ constexpr int NUM_SAMPLES_PER_E = 1'000;
 constexpr double alpha = 2.5; // GRB intrinsic spectral index, i.e. dN/dE ~ E^-alpha exp(-E/Ec)
 constexpr double Ec = 20.0; // GRB intrinsic cutoff energy; TeV
 constexpr double E_trunc = 10.0; // lower bound on energy sampling; TeV
-std::string big_run_dir = "runs_VHE/";
+std::string group_dir = "test_0515/";
 
 std::vector<double> calc_per_E_params(double z, double E, double B0, std::mt19937& rng) {
     // d_E: comoving distance to GRB
@@ -41,6 +43,86 @@ std::vector<double> calc_per_E_params(double z, double E, double B0, std::mt1993
     return res;
 }
 
+void merge_thread_files(std::string& run_dir, std::string& tmp_dir) {
+    std::ofstream out_data(run_dir + "data.csv");
+    out_data << "E,theta_obs,phi_obs,T,w\n";
+
+    std::ofstream out_einj(run_dir + "E_inj.csv");
+
+    std::cout << "Merging thread files from: " << tmp_dir << "\n";
+
+    for (auto& entry : fs::directory_iterator(tmp_dir)) {
+        if (!entry.is_regular_file()) continue;
+        auto path = entry.path();
+        auto fn   = path.filename().string();
+
+        std::ifstream in(path);
+        if (!in) continue;
+
+        std::string line;
+        if (fn.rfind("data_thread_", 0) == 0) {
+            // skip header in each thread-data file
+            std::getline(in, line);
+            while (std::getline(in, line)) {
+                out_data << line << "\n";
+            }
+        }
+        else if (fn.rfind("Einj_thread_", 0) == 0) {
+            while (std::getline(in, line)) {
+                out_einj << line << "\n";
+            }
+        }
+        else {
+            continue;
+        }
+
+        in.close();
+        fs::remove(path);
+    }
+
+    out_data.close();
+    out_einj.close();
+    fs::remove(tmp_dir);
+    std::cout << "data.csv and E_inj.csv written in " << run_dir << std::endl;
+
+    // std::string main_file_path = run_dir + "data.csv";
+    // std::ofstream main_file(main_file_path);
+    // main_file << "E,theta_obs,phi_obs,T,w\n";
+    // std::cout << "Merging thread data files into: " << main_file_path << std::endl;
+
+    // for (int t = 0; t < max_threads; ++t) {
+    //     std::ifstream thread_file(tmp_dir + "data_thread_" + std::to_string(t) + ".csv");
+    //     std::string line;
+    //     // skip header
+    //     std::getline(thread_file, line);
+    //     while (std::getline(thread_file, line)) {
+    //         main_file << line << "\n";
+    //     }
+    //     thread_file.close();
+    //     // remove thread-local file
+    //     fs::remove(tmp_dir + "data_thread_" + std::to_string(t) + ".csv");
+    // }
+    // main_file.close();
+    // std::cout << "Data written to " << main_file_path << std::endl;
+
+    // // merge injection energy files
+    // std::string main_Einj_path = run_dir + "E_inj.csv";
+    // std::ofstream main_Einj_file(main_Einj_path);
+    // std::cout << "Merging thread E_inj files into: " << main_Einj_path << std::endl;
+    // for (int t = 0; t < max_threads; ++t) {
+    //     std::ifstream thread_Einj(tmp_dir + "Einj_thread_" + std::to_string(t) + ".csv");
+    //     std::string line;
+    //     while (std::getline(thread_Einj, line)) {
+    //         main_file << line << "\n";
+    //     }
+    //     thread_Einj.close();
+    //     // remove thread-local file
+    //     fs::remove(tmp_dir + "Einj_thread_" + std::to_string(t) + ".csv");
+    // }
+    // main_Einj_file.close();
+    // std::cout << "Data written to " << main_Einj_path << std::endl;
+}
+
 int main(int argc, char* argv[]) {
 
     if (argc != 5) {
@@ -49,7 +131,7 @@ int main(int argc, char* argv[]) {
     }
 
     // create run directory
-    std::string run_dir = big_run_dir + "z" + std::string(argv[1]) + "_B" + std::string(argv[2]) + "_j" + std::string(argv[3]) + "_v" + std::string(argv[4]) + "/";
+    std::string run_dir = group_dir + "z" + std::string(argv[1]) + "_B" + std::string(argv[2]) + "_j" + std::string(argv[3]) + "_v" + std::string(argv[4]) + "/";
     std::cout << "Creating run directory: " << run_dir << std::endl;
     if (fs::exists(run_dir)) {
         std::cerr << "Run directory already exists. Please remove it or choose a different name." << std::endl;
@@ -84,9 +166,7 @@ int main(int argc, char* argv[]) {
     // acceptance probability: p_accept(E) = f(E)/[M*g(E)] = (E/E_trunc)^(-alpha)
     std::exponential_distribution<double> envelop_dist(1.0/Ec);
     std::uniform_real_distribution<double> uni(0.0, 1.0);
-
-    std::uniform_real_distribution<double> energy_dist(2, 20);
-
+    // uniform distribution for jet-frame emission angles
     std::uniform_real_distribution<double> theta_dist(0, th_j);
     std::uniform_real_distribution<double> phi_dist(0, 2.0*M_PI);
 
@@ -104,6 +184,9 @@ int main(int argc, char* argv[]) {
         std::ofstream thread_file(tmp_dir + "data_thread_" + std::to_string(thread_id) + ".csv");
         // write header once per file
         thread_file << "E,theta_obs,phi_obs,T,w" << std::endl;
+
+        // injection energy file
+        std::ofstream thread_Einj(tmp_dir + "Einj_thread_" + std::to_string(thread_id) + ".csv");
         #pragma omp for schedule(dynamic, 1)
         for (int i = 0; i < NUM_E; ++i) {
             std::stringstream localBuffer; // thread-local buffer for photon data
@@ -140,40 +223,17 @@ int main(int argc, char* argv[]) {
                                 << photon.T << ","
                                 << photon.w << "\n";
                 }
-            // end of th-phi loop
-            }
+            } // end of th-phi loop
+
             // flush buffer to thread-local file once per E
             thread_file << localBuffer.str();
-        // end of E loop
-        }
+            thread_Einj << E << "\n";
+        } // end of E loop
+
         thread_file.close();
-    // end of parallel region
-    }
+        thread_Einj.close();
+    } // end of parallel region
 
-
-    // --------------------------------------------------------------------------------------
-    // Merge thread-local files into the main file
-    // --------------------------------------------------------------------------------------
-    std::string main_file_path = run_dir + "data.csv";
-    std::ofstream main_file(main_file_path);
-    main_file << "E,theta_obs,phi_obs,T,w\n";
-    std::cout << "Merging thread-local files into main file: " << main_file_path << std::endl;
-
-    for (int t = 0; t < max_threads; ++t) {
-        std::ifstream thread_file(tmp_dir + "data_thread_" + std::to_string(t) + ".csv");
-        std::string line;
-        // skip header
-        std::getline(thread_file, line);
-        while (std::getline(thread_file, line)) {
-            main_file << line << "\n";
-        }
-        thread_file.close();
-        // remove thread-local file
-        fs::remove(tmp_dir + "data_thread_" + std::to_string(t) + ".csv");
-    }
-    
-    main_file.close();
-    fs::remove(tmp_dir);
-    std::cout << "Data written to " << main_file_path << std::endl;
+    merge_thread_files(run_dir, tmp_dir);
     return 0;
 }
