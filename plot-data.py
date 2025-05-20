@@ -44,8 +44,7 @@ def sort_data(path_to_data):
 
     return E, th, phi, x, y, T, w
 
-def plot_E2dNdE(E, w, inj_centers, inj_hist, hist_dir, nbins=100):
-    plt.figure(figsize=(6,6))
+def plot_E2dNdE_obs(E, w, hist_dir, nbins=100):
     # observed spectrum
     E_obs = 0.32*(E/20)**2  # observed photon energy in TeV
     hist, edges = np.histogram(E_obs, bins=nbins, weights=w, density=False)
@@ -55,9 +54,8 @@ def plot_E2dNdE(E, w, inj_centers, inj_hist, hist_dir, nbins=100):
     E2dNdE = dNdE * centers**2
     hist_sg = savgol_filter(E2dNdE, window_length=11, polyorder=3)
 
-    # plt.step(centers, hist, where='mid', alpha=0.6)
+    plt.figure(figsize=(6,6))
     plt.plot(centers, hist_sg, lw=2, color='orange', label='observed spectrum')
-    plt.plot(inj_centers, inj_hist, lw=2, color='blue', label='injection spectrum')
     plt.xscale('log')
     plt.yscale('log')
     plt.xlabel('E [TeV]')
@@ -66,8 +64,23 @@ def plot_E2dNdE(E, w, inj_centers, inj_hist, hist_dir, nbins=100):
     plt.savefig(os.path.join(hist_dir,'E2dNdE.png'), dpi=300)
     plt.close()
 
-def plot_inj_spectrum(E, w, inj_centers, inj_hist, run_dir, nbins=100):
-    return
+def plot_E2dNdE_inj(run_dir, nbins=100):
+    E_inj = np.loadtxt(os.path.join(run_dir, 'E_inj.csv'))
+    hist, edges = np.histogram(E_inj, bins=nbins, density=False)
+    centers = 0.5*(edges[1:]+edges[:-1])
+    widths = edges[1:] - edges[:-1]
+    dNdE = hist / widths
+    E2dNdE = dNdE * centers**2
+    hist_sg = savgol_filter(E2dNdE, window_length=11, polyorder=3)
+
+    plt.figure(figsize=(6,6))
+    plt.plot(centers, hist_sg, lw=2, color='blue')
+    plt.xscale('log')
+    plt.yscale('log')
+    plt.xlabel('E [TeV]')
+    plt.ylabel(r'$E^2dN/dE$ [arb. u]')
+    plt.savefig(os.path.join(run_dir,'E2dNdE_inj.png'), dpi=300)
+    plt.close()
 
 def plot_histogram(th, phi, T, w, hist_dir, nbins=100):
     # plot histogram of th_obs
@@ -95,7 +108,7 @@ def plot_histogram(th, phi, T, w, hist_dir, nbins=100):
     plt.savefig(os.path.join(hist_dir,'T-hist.png'), dpi=300)
     plt.close()
 
-def plot_density_map(E, B, x, y, w, run_dir, nbins=100):
+def plot_density_map(B, x, y, w, run_dir, nbins=100):
     x_max = np.max(x)*1.1
     y_max = np.max(y)*1.1
     xy_max = np.max([x_max, y_max])
@@ -213,18 +226,9 @@ def make_movie(B, x, y, T, w, run_dir, tbins=100, nbins=100):
 
 def main():
     nbins = 100
-    # injection spectrum
-    E_inj = np.loadtxt('injection_energy_samples.csv')
-    hist, edges = np.histogram(E_inj, bins=nbins, density=False)
-    inj_centers = 0.5*(edges[1:]+edges[:-1])
-    widths = edges[1:] - edges[:-1]
-    dNdE = hist / widths
-    E2dNdE = dNdE * inj_centers**2
-    inj_hist_sg = savgol_filter(E2dNdE, window_length=11, polyorder=3)
-
-    big_run_dir = 'runs_VHE'
-    for dir in os.listdir(big_run_dir):
-        run_dir = os.path.join(big_run_dir, dir)
+    group_dir = 'runs_VHE'
+    for dir in os.listdir(group_dir):
+        run_dir = os.path.join(group_dir, dir)
         if not os.path.isdir(run_dir):
             print(f"{run_dir} is not a directory, skipping.")
             continue
@@ -235,9 +239,10 @@ def main():
 
         B = dir.split('_')[1][1:]
         E, th, phi, x, y, T, w = sort_data(os.path.join(run_dir, 'data.csv'))
-        plot_histogram(th, phi, T, w, run_dir, nbins=nbins)
-        plot_density_map(E, B, x, y, w, run_dir, nbins=nbins)
-        plot_E2dNdE(E, w, inj_centers, inj_hist_sg, run_dir, nbins=nbins)
+        # plot_histogram(th, phi, T, w, run_dir, nbins=nbins)
+        plot_density_map(B, x, y, w, run_dir, nbins=nbins)
+        plot_E2dNdE_inj(run_dir, nbins=nbins)
+        plot_E2dNdE_obs(E, w, run_dir, nbins=nbins)
         make_movie(B, x, y, T, w, run_dir, nbins=nbins)
         print(f"Plotting {run_dir} done.")
     print("All plots done.")
