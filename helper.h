@@ -1,3 +1,5 @@
+#pragma once
+
 #include <iostream>
 #include <cmath>
 #include <functional>
@@ -51,4 +53,132 @@ double calc_z(double E, double z_E, double low, double high) {
 // signum function
 template <typename T> int sgn(T val) {
     return (T(0) < val) - (val < T(0));
+}
+
+// 3D vector and matrix operations
+struct Vec3 { double x,y,z;
+  Vec3 operator+(Vec3 const& o) const {return {x+o.x,y+o.y,z+o.z};}
+  Vec3 operator-(Vec3 const& o) const {return {x-o.x,y-o.y,z-o.z};}
+  Vec3 operator-() const { return { -x, -y, -z }; }
+  Vec3 operator*(double s) const {return {x*s,y*s,z*s};}
+  Vec3 cross(Vec3 const& o) const {
+    return {y*o.z - z*o.y,
+            z*o.x - x*o.z,
+            x*o.y - y*o.x};
+  }
+  double dot(Vec3 const& o) const {
+    return x*o.x + y*o.y + z*o.z;
+  }
+  double norm() const { return std::sqrt(x*x + y*y + z*z); }
+  Vec3 normalized() const {
+    double n = norm();
+    if (n <= 1e-10) return {0, 0, 0}; // avoid division by zero
+    return {x / n, y / n, z / n};
+  }
+};
+static Vec3 operator*(double s, Vec3 const& v) {
+  return { v.x * s, v.y * s, v.z * s };
+}
+
+
+struct Mat3 {
+  double m[3][3];
+  Vec3 operator*(Vec3 const& v) const {
+    return {m[0][0]*v.x + m[0][1]*v.y + m[0][2]*v.z,
+            m[1][0]*v.x + m[1][1]*v.y + m[1][2]*v.z,
+            m[2][0]*v.x + m[2][1]*v.y + m[2][2]*v.z};
+  }
+  Mat3 operator*(Mat3 const& o) const {
+    Mat3 res = {};
+    for (int i=0; i<3; ++i)
+      for (int j=0; j<3; ++j)
+        for (int k=0; k<3; ++k)
+          res.m[i][j] += m[i][k] * o.m[k][j];
+    return res;
+  }
+  Mat3 operator+(Mat3 const& o) const {
+    Mat3 res = {};
+    for (int i=0; i<3; ++i)
+      for (int j=0; j<3; ++j)
+        res.m[i][j] = m[i][j] + o.m[i][j];
+    return res;
+  }
+  Mat3 operator-(Mat3 const& o) const {
+    Mat3 res = {};
+    for (int i=0; i<3; ++i)
+      for (int j=0; j<3; ++j)
+        res.m[i][j] = m[i][j] - o.m[i][j];
+    return res;
+  }
+  Mat3 operator-() const {
+    Mat3 res = {};
+    for (int i=0; i<3; ++i)
+      for (int j=0; j<3; ++j)
+        res.m[i][j] = -m[i][j];
+    return res;
+  }
+  Mat3 operator*(double s) const {
+    Mat3 res = {};
+    for (int i=0; i<3; ++i)
+      for (int j=0; j<3; ++j)
+        res.m[i][j] = m[i][j] * s;
+    return res;
+  }
+};
+static Mat3 operator*(double s, Mat3 const& mat) {
+    Mat3 res = {};
+    for (int i=0; i<3; ++i)
+      for (int j=0; j<3; ++j)
+        res.m[i][j] = mat.m[i][j] * s;
+    return res;
+}
+
+static Mat3 id_mat() {
+    return Mat3{{{1, 0, 0},
+                 {0, 1, 0},
+                 {0, 0, 1}}};
+}
+
+Mat3 RotAtoB(Vec3 const& a, Vec3 const& b) {
+    // returns matrix R such that Ra = b
+    // assumes a and b are normalized 3D vectors
+    Vec3 axis = a.cross(b);
+    double ax_norm = axis.norm();
+    if (ax_norm < 1e-10) {
+        return id_mat();
+    }
+    double c = a.dot(b);
+    double s = ax_norm;
+    double t = 1.0 - c;
+
+    Mat3 vx = Mat3 {
+        {{0, -axis.z, axis.y},
+        {axis.z, 0, -axis.x},
+        {-axis.y, axis.x, 0}}
+    };
+    Mat3 R = id_mat() + vx + vx*vx * (t/(s*s));
+    return R;
+}
+
+Vec3 spherical_to_cartesian(double theta, double phi) {
+  double sin_theta = std::sin(theta);
+    return {sin_theta * std::cos(phi),
+            sin_theta * std::sin(phi),
+            std::cos(theta)};
+}
+
+Mat3 rotate_to_gal_frame(Vec3 const& LOS_dir, Vec3 const& src_dir) {
+    // returns the rotation matrix that transforms vectors from the jet frame (th_emj, phi_emj)
+    // to the galactic frame
+
+    // LOS_dir is the direction of the LOS in the jet frame (th_view, phi_view)
+    // src_dir is the direction of the source in the global frame (theta_src, phi_src)
+
+    Vec3 z_prime = {0, 0, 1};
+
+    // R(z', z) rotates vectors in the same manner as the rotation from z' to z
+    // R^{-1}(z', z) = R(z, z') transforms vector components from z' frame to z frame, leaving the vector unchanged
+    Mat3 R1 = RotAtoB(LOS_dir, z_prime);
+    Mat3 R2 = RotAtoB(z_prime, -src_dir);
+    return R2 * R1;
 }
