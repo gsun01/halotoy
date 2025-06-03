@@ -139,7 +139,7 @@ static Mat3 id_mat() {
                  {0, 0, 1}}};
 }
 
-Mat3 RotAtoB(Vec3 const& a, Vec3 const& b) {
+Mat3 RotA2B(Vec3 const& a, Vec3 const& b) {
     // returns matrix R such that Ra = b
     // assumes a and b are normalized 3D vectors
     Vec3 axis = a.cross(b);
@@ -160,14 +160,39 @@ Mat3 RotAtoB(Vec3 const& a, Vec3 const& b) {
     return R;
 }
 
-Vec3 spherical_to_cartesian(double theta, double phi) {
+Vec3 sph2cart(double theta, double phi) {
   double sin_theta = std::sin(theta);
     return {sin_theta * std::cos(phi),
             sin_theta * std::sin(phi),
             std::cos(theta)};
 }
 
-Mat3 rotate_to_gal_frame(Vec3 const& LOS_dir, Vec3 const& src_dir) {
+std::pair<double, double> cart2sph(Vec3 const& v) {
+    // returns (theta, phi) in radians
+    double r = v.norm();
+    if (r < 1e-10) return {0, 0}; // avoid division by zero
+    double theta = std::acos(v.z / r); // polar angle
+    double phi = std::atan2(v.y, v.x); // azimuthal angle
+    return {theta, phi};
+}
+
+Mat3 rotation_matrix(Vec3 const& ax, double angle) {
+    // rotates vectors around axis ax by angle in radians
+    double c = std::cos(angle);
+    double s = std::sin(angle);
+    double t = 1.0 - c;
+    double x = ax.x, y = ax.y, z = ax.z;
+    double x2 = x * x, y2 = y * y, z2 = z * z;
+    double xy = x * y, xz = x * z, yz = y * z;
+    Mat3 R = Mat3 {
+        {{t * x2 + c, t * xy - s * z, t * xz + s * y},
+         {t * xy + s * z, t * y2 + c, t * yz - s * x},
+         {t * xz - s * y, t * yz + s * x, t * z2 + c}}
+    };
+    return R;
+}
+
+Mat3 rot2gal(Vec3 const& LOS_dir, Vec3 const& src_dir) {
     // returns the rotation matrix that transforms vectors from the jet frame (th_emj, phi_emj)
     // to the galactic frame
 
@@ -178,7 +203,7 @@ Mat3 rotate_to_gal_frame(Vec3 const& LOS_dir, Vec3 const& src_dir) {
 
     // R(z', z) rotates vectors in the same manner as the rotation from z' to z
     // R^{-1}(z', z) = R(z, z') transforms vector components from z' frame to z frame, leaving the vector unchanged
-    Mat3 R1 = RotAtoB(LOS_dir, z_prime);
-    Mat3 R2 = RotAtoB(z_prime, -src_dir);
+    Mat3 R1 = RotA2B(LOS_dir, z_prime);
+    Mat3 R2 = RotA2B(z_prime, -src_dir);
     return R2 * R1;
 }
