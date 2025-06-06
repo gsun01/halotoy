@@ -16,7 +16,8 @@ namespace fs = std::filesystem;
 // Simulation config
 constexpr int NUM_E = 10'000'000;
 constexpr int NUM_SAMPLES_PER_E = 100'000;
-fs::path group_dir = "test_0606_02/";
+fs::path data_dir = "/data/sguotong/data/halotoy";
+fs::path group_dir = data_dir / "test_0606_02/";
 // GRB parameters
 constexpr double z = 0.151;                         // redshift of GRB
 constexpr double jet_opening = 1.5*M_PI/180.0;      // jet half-opening angle, radians
@@ -283,7 +284,7 @@ int main() {
 
         thread_file.close();
         thread_Einj.close();
-    } 
+    }
     
     // --------------------------------------------------------------------------------------
     // End parallel region
