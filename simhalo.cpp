@@ -10,11 +10,13 @@
 
 #include "helper.h"
 
+namespace fs = std::filesystem;
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Simulation config
 constexpr int NUM_E = 10'000'000;
 constexpr int NUM_SAMPLES_PER_E = 100'000;
-std::string group_dir = "test_0606_02/";
+fs::path group_dir = "test_0606_02/";
 // GRB parameters
 constexpr double z = 0.151;                         // redshift of GRB
 constexpr double jet_opening = 1.5*M_PI/180.0;      // jet half-opening angle, radians
@@ -31,24 +33,43 @@ constexpr double E_trunc = 10.0;                    // lower bound on energy sam
 constexpr double B0 = 1.0e-15;                      // current epoch IGMF strength, Gauss
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-namespace fs = std::filesystem;
 
-std::tuple<std::string,std::string> create_run_dirs(std::string& group_dir, double z, 
+std::tuple<std::string,std::string> create_run_dirs(fs::path const& group_dir, double z, 
                                                      double jet_opening, double th_v, double phi_v) {
+    std::ostringstream oss;
+    oss << "z" << to_string(z, 3)
+        << "_B"   << to_string(-std::log10(B0), 0)
+        << "_j"   << to_string(jet_opening * 180.0 / M_PI, 1)
+        << "_v"   << to_string(th_v * 180.0 / M_PI, 1)
+        << "_phv" << to_string(phi_v * 180.0 / M_PI, 1);
+
     // create run directory
-    std::string run_dir = group_dir + "z" + to_string(z,3) + "_B" + to_string(-std::log10(B0),0) + 
-                            "_j" + to_string(jet_opening*180/M_PI,1) + "_v" + to_string(th_v*180/M_PI,1) + 
-                            "_phv" + to_string(phi_v*180/M_PI,1) + "/";
-    std::cout << "Creating run directory: " << run_dir << std::endl;
+    fs::path run_dir = group_dir / oss.str();
+    std::cout << "Creating run directory: " << run_dir.string() << std::endl;
     if (fs::exists(run_dir)) {
         std::cerr << "Run directory already exists." << std::endl;
         std::exit(EXIT_FAILURE);
     }
-    fs::create_directories(run_dir);
-    // create tmp directory 
-    std::string tmp_dir = run_dir + "tmp/";
+    try {
+        fs::create_directories(run_dir);
+    }
+    catch (const fs::filesystem_error& e) {
+        std::cerr << "Error creating run directory " << run_dir.string()
+                  << ": " << e.what() << std::endl;
+        std::exit(EXIT_FAILURE);
+    }
+
+    // create tmp subdir 
+    fs::path tmp_dir = run_dir / "tmp";
     std::cout << "Creating temporary directory: " << tmp_dir << std::endl;
-    fs::create_directories(tmp_dir);
+    try {
+        fs::create_directory(tmp_dir);
+    }
+    catch (const fs::filesystem_error& e) {
+        std::cerr << "Error creating tmp directory " << tmp_dir.string()
+                  << ": " << e.what() << std::endl;
+        std::exit(EXIT_FAILURE);
+    }
 
     return {run_dir, tmp_dir};
 }
@@ -126,13 +147,13 @@ double flat_sample_d_gamma(double mfp, std::mt19937& rng) {
 
 // }
 
-void merge_thread_files(std::string& run_dir, std::string& tmp_dir) {
-    std::ofstream out_data(run_dir + "data.csv");
+void merge_thread_files(fs::path const& run_dir, fs::path const& tmp_dir) {
+    std::ofstream out_data(run_dir / "data.csv");
     out_data << "E,theta_obs,phi_obs,T\n";
 
-    std::ofstream out_einj(run_dir + "E_inj.csv");
+    std::ofstream out_einj(run_dir / "E_inj.csv");
 
-    std::cout << "Merging thread files from: " << tmp_dir << "\n";
+    std::cout << "Merging thread files from: " << tmp_dir.string() << "\n";
 
     for (auto& entry : fs::directory_iterator(tmp_dir)) {
         if (!entry.is_regular_file()) continue;
@@ -166,7 +187,7 @@ void merge_thread_files(std::string& run_dir, std::string& tmp_dir) {
     out_data.close();
     out_einj.close();
     fs::remove(tmp_dir);
-    std::cout << "data.csv and E_inj.csv written in " << run_dir << std::endl;
+    std::cout << "data.csv and E_inj.csv written in " << run_dir.string() << std::endl;
 }
 
 int main() {
@@ -202,10 +223,10 @@ int main() {
         std::mt19937 rng(t_seed);
         
         // thread-local output files
-        std::ofstream thread_file(tmp_dir + "data_thread_" + std::to_string(thread_id) + ".csv");
+        std::ofstream thread_file(tmp_dir / ("data_thread_" + std::to_string(thread_id) + ".csv"));
         thread_file << "E,theta_obs,phi_obs,T" << std::endl;
         // injection energy file
-        std::ofstream thread_Einj(tmp_dir + "Einj_thread_" + std::to_string(thread_id) + ".csv");
+        std::ofstream thread_Einj(tmp_dir / ("Einj_thread_" + std::to_string(thread_id) + ".csv"));
 
 
         #pragma omp for schedule(dynamic, 1)
