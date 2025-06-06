@@ -1,6 +1,8 @@
 #pragma once
 
 #include <iostream>
+#include <fstream>
+#include <sstream>
 #include <cmath>
 #include <functional>
 
@@ -53,6 +55,13 @@ double calc_z(double E, double z_E, double low, double high) {
 // signum function
 template <typename T> int sgn(T val) {
     return (T(0) < val) - (val < T(0));
+}
+
+std::string to_string(double value, int precision = 6) {
+    std::ostringstream out;
+    out.precision(precision);
+    out << std::fixed << value;
+    return out.str();
 }
 
 // 3D vector and matrix operations
@@ -143,12 +152,11 @@ Mat3 RotA2B(Vec3 const& a, Vec3 const& b) {
     // returns matrix R such that Ra = b
     // assumes a and b are normalized 3D vectors
     Vec3 axis = a.cross(b);
-    double ax_norm = axis.norm();
-    if (ax_norm < 1e-10) {
-        return id_mat();
-    }
     double c = a.dot(b);
-    double s = ax_norm;
+    double s = axis.norm();
+    if (s < 1e-12) {
+        return c*id_mat();
+    }
     double t = 1.0 - c;
 
     Mat3 vx = Mat3 {
