@@ -27,20 +27,20 @@ def sort_data(path_to_data):
     th = sorted_data[:,1]*180/np.pi
     phi = sorted_data[:,2]
     T = sorted_data[:,3]
-    w = sorted_data[:,4]
+    w = np.ones_like(E) # weights are all 1 for now
 
     x = th*np.cos(phi)
     y = th*np.sin(phi)
 
     # mask out NaN values
-    mask = np.isfinite(x) & np.isfinite(y) & np.isfinite(w)
-    x = x[mask]
-    y = y[mask]
-    w = w[mask]
-    E = E[mask]
-    th = th[mask]
-    phi = phi[mask]
-    T = T[mask]
+    # mask = np.isfinite(x) & np.isfinite(y) & np.isfinite(w)
+    # x = x[mask]
+    # y = y[mask]
+    # w = w[mask]
+    # E = E[mask]
+    # th = th[mask]
+    # phi = phi[mask]
+    # T = T[mask]
 
     return E, th, phi, x, y, T, w
 
@@ -226,7 +226,7 @@ def make_movie(B, x, y, T, w, run_dir, tbins=100, nbins=100):
 
 def main():
     nbins = 100
-    group_dir = 'runs_VHE'
+    group_dir = 'test_0603_02'
     for dir in os.listdir(group_dir):
         run_dir = os.path.join(group_dir, dir)
         if not os.path.isdir(run_dir):
