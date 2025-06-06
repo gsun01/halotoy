@@ -5,6 +5,7 @@
 
 #include <cmath>
 #include <tuple>
+#include <vector>
 #include <random>
 #include <omp.h>
 
@@ -35,7 +36,7 @@ constexpr double B0 = 1.0e-15;                      // current epoch IGMF streng
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-std::tuple<std::string,std::string> create_run_dirs(fs::path const& group_dir, double z, 
+std::tuple<fs::path,fs::path> create_run_dirs(fs::path const& group_dir, double z, 
                                                      double jet_opening, double th_v, double phi_v) {
     std::ostringstream oss;
     oss << "z" << to_string(z, 3)
