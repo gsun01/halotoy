@@ -1,0 +1,5 @@
+{
+  "catalog_file": "/data/sguotong/projects/halotoy/catalogs/test_catalog.json",
+  "output_base_dir": "/data/sguotong/data/halotoy/test_refac",
+  "log_dir": "/data/sguotong/projects/halotoy/logs/"
+}

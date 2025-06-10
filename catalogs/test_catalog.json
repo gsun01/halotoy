@@ -1,0 +1,17 @@
+[
+  {
+    "GRB_id":       "GRB221009A",
+    "z":            0.151,
+    "th_src":       0.000,
+    "phi_src":      0.000,
+    "th_v":         0.000,
+    "phi_v":        0.000,
+    "jet_opening":  1.500,
+    "alpha":        2.5,
+    "Ec":           20.0,
+    "E_trunc":      10.0,
+    "B0":           1e-15,
+    "NUM_E":        100000,
+    "NUM_SAMPLES_PER_E": 10000
+  }
+]

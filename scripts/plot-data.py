@@ -63,7 +63,7 @@ def sort_data(path_to_data):
 
     return E, th, phi, x, y, T, w
 
-def plot_E2dNdE_obs(E, w, hist_dir, nbins=100):
+def plot_E2dNdE_obs(E, w, run_dir, nbins=100):
     # observed spectrum
     E_obs = 0.32*(E/20)**2  # observed photon energy in TeV
     hist, edges = np.histogram(E_obs, bins=nbins, weights=w, density=False)
@@ -80,7 +80,7 @@ def plot_E2dNdE_obs(E, w, hist_dir, nbins=100):
     plt.xlabel('E [TeV]')
     plt.ylabel(r'$E^2dN/dE$ [arb. u]')
     plt.legend()
-    plt.savefig(os.path.join(hist_dir,'E2dNdE.png'), dpi=300)
+    plt.savefig(os.path.join(run_dir,'E2dNdE.png'), dpi=300)
     plt.close()
 
 def plot_E2dNdE_inj(run_dir, nbins=100):
@@ -280,17 +280,17 @@ def process_run(run_dir, nbins=100, tbins=100):
     E, th, phi, x, y, T, w = sort_data(data_path)
 
     plot_density_map(B, x, y, w, run_dir, nbins=nbins)
-    plot_E2dNdE_inj(run_dir, hist_dir, nbins=nbins)
-    plot_E2dNdE_obs(E, w, run_dir, hist_dir, nbins=nbins)
+    plot_E2dNdE_inj(run_dir, nbins=nbins)
+    plot_E2dNdE_obs(E, w, run_dir, nbins=nbins)
 
-    inner_jobs = max(1, (os.cpu_count() or 1) // 2)
-    make_movie(run_dir, B, x, y, T, w, tbins=100, nbins=100, n_jobs=inner_jobs)
+    # inner_jobs = max(1, (os.cpu_count() or 1) // 2)
+    # make_movie(run_dir, B, x, y, T, w, tbins=100, nbins=100, n_jobs=inner_jobs)
 
     print(f"[{run_dir}] Done.")
 
 def main():
     data_dir = '/data/sguotong/data/halotoy'
-    group_dir = os.path.join(data_dir, 'test_0606_01')
+    group_dir = os.path.join(data_dir, 'test_refac')
     if not os.path.isdir(group_dir):
         print(f"Group directory '{group_dir}' not found. Exiting.")
         return
