@@ -1,10 +1,10 @@
 {
-  "catalog_file": "/grad/sguotong/projects/halotoy/catalogs/test_population.json",
-  "output_base_dir": "/data/sguotong/data/halotoy/default",
+  "catalog_file": "/grad/sguotong/projects/halotoy/catalogs/10kgrbs.json",
+  "output_base_dir": "/data/sguotong/data/halotoy/10kgrbs",
   "log_dir": "/grad/sguotong/projects/halotoy/logs/",
 
   "B0": 1e-15,
-  "NUM_GRB": 1000,
+  "NUM_GRB": 10000,
   "NUM_E": 100000,
   "NUM_SAMPLES_PER_E": 10000,
 
