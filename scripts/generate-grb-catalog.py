@@ -1,6 +1,8 @@
 #!usr/bin/env python
 
+import sys
 import json
+from pathlib import Path
 import numpy as np
 
 def sample_redshift(z_min, z_max):
@@ -63,8 +65,15 @@ def load_config(config_file="/grad/sguotong/projects/halotoy/configs/default.jso
     return cfg
 
 def main():
+    if len(sys.argv) != 2:
+        print(f"Usage: {Path(sys.argv[0]).name} <config.json>")
+        sys.exit(1)
+    config_path = Path(sys.argv[1])
+    if not config_path.is_file():
+        print(f"Error: config file not found: {config_path}")
+        sys.exit(2)
     # Load parameters from config.json
-    cfg = load_config()
+    cfg = load_config(config_path)
     output_file = cfg.get("catalog_file", "/grad/sguotong/projects/halotoy/catalogs/default_catalog.json")
     B0 = cfg.get("B0", 1.0e-15)
     NUM_GRB = cfg.get("NUM_GRB", 1000)
