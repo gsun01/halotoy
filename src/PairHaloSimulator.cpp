@@ -13,25 +13,24 @@ namespace fs = std::filesystem;
 PairHaloSimulator::PairHaloSimulator(SimulationParams const& params, fs::path const& out_dir)
     : _params(params),
       _out_dir(out_dir),
-      _tmp_dir(out_dir / params.grb_id / "tmp")
+      _tmp_dir(out_dir / ("tmp_"+params.grb_id))
 { /* nothing else here */ }
 
 bool PairHaloSimulator::run() {
-    if (fs::exists(_out_dir)) {
-        std::cerr << "ERROR: run directory " << _out_dir.string()
-             << " already exists. Aborting.\n";
-        return false;
-    }
-    fs::create_directories(_out_dir);
     fs::create_directory(_tmp_dir);
+    std::cout << "Created tmp directory " << _tmp_dir << "\n";
 
     compute_per_GRB_params();
+    std::cout << "Computed per GRB params \n";
 
     initialize_thread_seeds();
+    std::cout << "Initialized thread seeds\n";
 
     generate_halo_photons();
+    std::cout << "Generated halo photons\n";
 
     merge_thread_files();
+    std::cout << "Merged thread files\n";
 
     return true;
 }

@@ -28,7 +28,12 @@ int main(int argc, char* argv[]) {
     fs::path output_base_dir = cfg["output_base_dir"].get<std::string>();
     fs::path log_dir         = cfg["log_dir"].get<std::string>();
 
-    // Ensure output and log directories exist
+    // create output_base_dir and log_dir if they do not exist
+    if (fs::exists(output_base_dir)) {
+        std::cerr << "ERROR: run directory " << output_base_dir.string()
+             << " already exists. Aborting.\n";
+        return false;
+    }
     fs::create_directories(output_base_dir);
     fs::create_directories(log_dir);
 
