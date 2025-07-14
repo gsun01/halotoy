@@ -13,7 +13,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // 1) Load configuration
+    // Load configuration
     fs::path config_path = argv[1];
     std::ifstream cfg_in(config_path);
     if (!cfg_in) {
@@ -37,7 +37,7 @@ int main(int argc, char* argv[]) {
     fs::create_directories(output_base_dir);
     fs::create_directories(log_dir);
 
-    // 2) Read GRB catalog (JSON array)
+    // Read GRB catalog (JSON array)
     std::ifstream in(catalog_file);
     if (!in) {
         std::cerr << "Error: cannot open catalog file " << catalog_file << "\n";
@@ -46,7 +46,7 @@ int main(int argc, char* argv[]) {
     json bursts;
     in >> bursts;
 
-    // 3) Loop over bursts and run simulation
+    // Loop over bursts and run simulation
     for (auto const& item : bursts) {
         SimulationParams params;
         params.z                  = item["z"].get<double>();
@@ -63,14 +63,9 @@ int main(int argc, char* argv[]) {
         params.NUM_SAMPLES_PER_E  = item["NUM_SAMPLES_PER_E"].get<int>();
         params.grb_id             = item["GRB_id"].get<std::string>();
 
-        // Construct output and log file names
-        // std::ostringstream dir_name;
-        // dir_name << grb_id;
-        // fs::path run_dir = output_base_dir / dir_name.str();
         fs::path out_log = log_dir / (params.grb_id + ".stdout.log");
         fs::path err_log = log_dir / (params.grb_id + ".stderr.log");
 
-        // Open log files
         std::ofstream log_out(out_log);
         std::ofstream log_err(err_log);
         if (!log_out || !log_err) {
@@ -90,7 +85,6 @@ int main(int argc, char* argv[]) {
         std::cout.rdbuf(cout_buf);
         std::cerr.rdbuf(cerr_buf);
 
-        // Report overall status
         if (!success) {
             std::cerr << "▶ Skipping " << params.grb_id << ": run failed\n";
         } else {
