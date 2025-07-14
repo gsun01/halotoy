@@ -1,6 +1,10 @@
 #!usr/bin/env python
 
 """
+    Deprecated old code for plotting single GRB halos
+"""
+
+"""
 This script plots histograms and halos from data.csv for multiple run directories in parallel
 using joblib. It makes a movie from the halos in each run.
 
