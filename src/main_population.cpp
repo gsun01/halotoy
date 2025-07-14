@@ -56,21 +56,20 @@ int main(int argc, char* argv[]) {
         params.B0                 = item["B0"].get<double>();
         params.NUM_E              = item["NUM_E"].get<int>();
         params.NUM_SAMPLES_PER_E  = item["NUM_SAMPLES_PER_E"].get<int>();
-
-        std::string grb_id        = item["GRB_id"].get<std::string>();
+        params.grb_id             = item["GRB_id"].get<std::string>();
 
         // Construct output and log file names
-        std::ostringstream dir_name;
-        dir_name << "GRB_" << grb_id;
-        fs::path run_dir = output_base_dir / dir_name.str();
-        fs::path out_log = log_dir / (dir_name.str() + ".stdout.log");
-        fs::path err_log = log_dir / (dir_name.str() + ".stderr.log");
+        // std::ostringstream dir_name;
+        // dir_name << grb_id;
+        // fs::path run_dir = output_base_dir / dir_name.str();
+        fs::path out_log = log_dir / (params.grb_id + ".stdout.log");
+        fs::path err_log = log_dir / (params.grb_id + ".stderr.log");
 
         // Open log files
         std::ofstream log_out(out_log);
         std::ofstream log_err(err_log);
         if (!log_out || !log_err) {
-            std::cerr << "Error: cannot open log files for " << grb_id << "\n";
+            std::cerr << "Error: cannot open log files for " << params.grb_id << "\n";
             continue;
         }
 
@@ -79,7 +78,7 @@ int main(int argc, char* argv[]) {
         auto cerr_buf = std::cerr.rdbuf(log_err.rdbuf());
 
         // Run the simulation
-        PairHaloSimulator simulator(params, run_dir);
+        PairHaloSimulator simulator(params, output_base_dir);
         bool success = simulator.run();
 
         // Restore output streams
@@ -88,9 +87,9 @@ int main(int argc, char* argv[]) {
 
         // Report overall status
         if (!success) {
-            std::cerr << "▶ Skipping " << grb_id << ": run failed\n";
+            std::cerr << "▶ Skipping " << params.grb_id << ": run failed\n";
         } else {
-            std::cout << "✔ Completed GRB " << grb_id << "\n";
+            std::cout << "✔ Completed GRB " << params.grb_id << "\n";
         }
     }
 

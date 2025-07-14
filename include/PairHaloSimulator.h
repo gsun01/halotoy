@@ -23,6 +23,7 @@ struct SimulationParams {
     double E_trunc;                             // lower bound on energy sampling; TeV
     // IGMF parameters
     double B0;                                  // current epoch IGMF strength, Gauss
+    std::string grb_id;                         // GRB identifier
 };
 
 class PairHaloSimulator {
