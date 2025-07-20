@@ -59,7 +59,7 @@ def generate_population(B0, NUM_GRB, NUM_E, NUM_SAMPLES_PER_E, z_min, z_max):
         pop.append(grb)
     return pop
 
-def load_config(config_file="/grad/sguotong/projects/halotoy/configs/default.json"):
+def load_config(config_file):
     with open(config_file, "r") as cf:
         cfg = json.load(cf)
     return cfg
