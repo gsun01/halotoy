@@ -65,9 +65,7 @@ void PairHaloSimulator::initialize_thread_seeds() {
 }
 
 std::tuple<double,double> PairHaloSimulator::compute_per_E_params(double E) {
-    // exactly your calc_per_E_params:
     double z = _params.z;
-    // ... compute z_s, mfp, delta as before ...
     double z_s = calc_z(E, z, 0.0, z);
     auto f2 = [=](double zz) {
         return -3.0e5/(70*std::sqrt(0.3*(1+zz)*(1+zz)*(1+zz)+0.7));
@@ -173,9 +171,11 @@ void PairHaloSimulator::generate_halo_photons() {
 }
 
 void PairHaloSimulator::merge_thread_files() {
-    std::ofstream out_data(_out_dir / ("data_"+_params.grb_id+".csv"));
+    fs::create_directory(_out_dir / "photon_data");
+    std::ofstream out_data(_out_dir / "photon_data" / ("data_"+_params.grb_id+".csv"));
     out_data << "E,theta_obs,phi_obs,T\n";
-    std::ofstream out_einj(_out_dir / ("Einj_"+_params.grb_id+".csv"));
+    fs::create_directory(_out_dir / "Einj");
+    std::ofstream out_einj(_out_dir / "Einj" / ("Einj_"+_params.grb_id+".csv"));
 
     std::cout << "Merging thread files in " << _tmp_dir.string() << "\n";
     for (auto& entry : fs::directory_iterator(_tmp_dir)) {
