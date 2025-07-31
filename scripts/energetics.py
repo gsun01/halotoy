@@ -13,7 +13,8 @@ def get_grb_data_from_id(output_base_dir, grb_id):
     if not grb_Einj_file.exists():
         raise FileNotFoundError(f"GRB Einj file {grb_Einj_file} does not exist.")
     
-    E = np.loadtxt(grb_data_file, delimiter=',', skiprows=1)[:,0]
+    data = np.loadtxt(grb_data_file, delimiter=',', skiprows=1)
+    E = data[:,0]
     E_obs = 0.32*(E/20)**2          # TeV
     E_inj = np.loadtxt(grb_Einj_file, delimiter=',')
     

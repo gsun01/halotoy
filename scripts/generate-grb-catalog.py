@@ -29,11 +29,10 @@ def sample_angles():
     """Uniformly sample source and viewing angles on the sphere."""
     th_src = np.random.uniform(0, np.pi)
     phi_src = np.random.uniform(0, 2 * np.pi)
-    th_v = 0.0
-    phi_v = 0.0
     jet_opening = np.random.uniform(0.1, 2.0) * np.pi/180.0  # in radians
-    # th_v = np.random.uniform(0, np.pi)
-    # phi_v = np.random.uniform(0, 2 * np.pi)
+    th_v = np.random.uniform(0.0, jet_opening)  # Viewing angle in radians
+    phi_v = np.random.uniform(0, 2 * np.pi)
+
     return th_src, phi_src, th_v, phi_v, jet_opening
 
 def generate_population(B0, NUM_GRB, NUM_E, NUM_SAMPLES_PER_E, z_min, z_max):
